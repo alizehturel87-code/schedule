@@ -1,37 +1,43 @@
 const CATEGORY_META = [
   {
     id: "ultra_12",
-    label: "Ultra important to be completed in next 12 hrs",
+    label: "Ultra Important",
+    optionLabel: "Ultra important to be completed in next 12 hrs",
     shortLabel: "Next 12 hrs",
-    accent: "#d94b3d",
-    subtitle: "Critical work that should stay visible until it is done.",
+    accent: "#ff4d62",
   },
   {
     id: "important_24",
-    label: "Important to be done in next 24 hrs",
+    label: "Important",
+    optionLabel: "Important to be done in next 24 hrs",
     shortLabel: "Next 24 hrs",
-    accent: "#eb8f2f",
-    subtitle: "Core commitments that matter today and tomorrow.",
+    accent: "#ffb347",
   },
   {
     id: "weekend",
-    label: "Weekend Tasks",
-    shortLabel: "Weekend",
-    accent: "#2d8f84",
-    subtitle: "Things grouped for the next slower planning window.",
+    label: "Weekend",
+    optionLabel: "Weekend Tasks",
+    shortLabel: "This weekend",
+    accent: "#5fa2ff",
+  },
+  {
+    id: "meetings_events",
+    label: "Meetings & Events",
+    optionLabel: "Meetings and events to reach on time",
+    shortLabel: "On time",
+    accent: "#c487ff",
   },
   {
     id: "leisure",
-    label: "Do it at your leisure",
-    shortLabel: "Leisure",
-    accent: "#6674d9",
-    subtitle: "Low-pressure tasks you can place when energy allows.",
+    label: "Leisure",
+    optionLabel: "Do it at your leisure",
+    shortLabel: "Whenever",
+    accent: "#59dda0",
   },
 ];
 
 const SETTINGS_KEY = "orbit_tasks_settings_v1";
 const REMINDER_LOG_KEY = "orbit_tasks_reminders_v1";
-const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const API_ENDPOINT = "/.netlify/functions/tasks";
 
 const state = {
@@ -39,8 +45,9 @@ const state = {
   profileName: "Operator",
   selectedView: "board",
   selectedDateKey: dateKey(new Date()),
+  selectedCategoryFilter: "all",
   calendarCursor: startOfMonth(new Date()),
-  lastSyncLabel: "Not synced yet",
+  editingTaskId: "",
 };
 
 const reminderTimers = new Map();
@@ -53,16 +60,18 @@ const elements = {
   connectionDot: document.getElementById("connectionDot"),
   notificationStatus: document.getElementById("notificationStatus"),
   notifyBtn: document.getElementById("notifyBtn"),
-  heroDate: document.getElementById("heroDate"),
-  heroTitle: document.getElementById("heroTitle"),
-  metricsGrid: document.getElementById("metricsGrid"),
+  categorySummaryList: document.getElementById("categorySummaryList"),
+  progressCount: document.getElementById("progressCount"),
+  progressBarFill: document.getElementById("progressBarFill"),
+  sidebarAddTaskBtn: document.getElementById("sidebarAddTaskBtn"),
   formTitle: document.getElementById("formTitle"),
+  taskModalWrap: document.getElementById("taskModalWrap"),
+  deleteTaskBtn: document.getElementById("deleteTaskBtn"),
   taskForm: document.getElementById("taskForm"),
   taskIdInput: document.getElementById("taskIdInput"),
   taskTitleInput: document.getElementById("taskTitleInput"),
   taskCategoryInput: document.getElementById("taskCategoryInput"),
   taskDueInput: document.getElementById("taskDueInput"),
-  taskReminderInput: document.getElementById("taskReminderInput"),
   taskNotesInput: document.getElementById("taskNotesInput"),
   clearFormBtn: document.getElementById("clearFormBtn"),
   boardToggle: document.getElementById("boardToggle"),
@@ -76,7 +85,6 @@ const elements = {
   calendarGrid: document.getElementById("calendarGrid"),
   agendaTitle: document.getElementById("agendaTitle"),
   agendaList: document.getElementById("agendaList"),
-  metricCardTemplate: document.getElementById("metricCardTemplate"),
 };
 
 init();
@@ -85,7 +93,6 @@ function init() {
   hydrateSettings();
   buildCategoryOptions();
   bindEvents();
-  updateHero();
   refreshNotificationStatus();
   render();
   syncTasks();
@@ -99,7 +106,7 @@ function hydrateSettings() {
 
 function buildCategoryOptions() {
   elements.taskCategoryInput.innerHTML = CATEGORY_META.map((category) => (
-    `<option value="${category.id}">${category.label}</option>`
+    `<option value="${category.id}">${category.optionLabel}</option>`
   )).join("");
 }
 
@@ -107,13 +114,17 @@ function bindEvents() {
   elements.saveSettingsBtn.addEventListener("click", saveSettings);
   elements.syncBtn.addEventListener("click", syncTasks);
   elements.notifyBtn.addEventListener("click", enableNotifications);
+  elements.sidebarAddTaskBtn.addEventListener("click", () => openTaskModal());
   elements.boardToggle.addEventListener("click", () => setView("board"));
   elements.calendarToggle.addEventListener("click", () => setView("calendar"));
   elements.taskForm.addEventListener("submit", handleTaskSubmit);
-  elements.clearFormBtn.addEventListener("click", resetForm);
+  elements.clearFormBtn.addEventListener("click", closeTaskModal);
+  elements.deleteTaskBtn.addEventListener("click", handleModalDelete);
   elements.prevMonthBtn.addEventListener("click", () => changeMonth(-1));
   elements.nextMonthBtn.addEventListener("click", () => changeMonth(1));
   elements.todayBtn.addEventListener("click", jumpToToday);
+  elements.taskModalWrap.addEventListener("click", handleModalBackdrop);
+  document.addEventListener("keydown", handleGlobalKeydown);
 }
 
 function saveSettings() {
@@ -121,10 +132,7 @@ function saveSettings() {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify({
     profileName: state.profileName,
   }));
-
-  updateHero();
-  updateConnectionState("configured", "Preferences saved. Sync will use the Netlify function connected to Google Sheets.");
-  syncTasks();
+  updateConnectionState("configured", "Workspace name saved.");
 }
 
 async function syncTasks() {
@@ -138,8 +146,7 @@ async function syncTasks() {
   try {
     const response = await apiRequest("list");
     state.tasks = sortTasks(response.tasks || []);
-    state.lastSyncLabel = `Synced ${formatTime(new Date())}`;
-    updateConnectionState("connected", `${state.tasks.length} tasks loaded from Google Sheets. ${state.lastSyncLabel}.`);
+    updateConnectionState("connected", `${state.tasks.length} tasks loaded from Google Sheets.`);
     scheduleNotifications();
     render();
   } catch (error) {
@@ -161,7 +168,6 @@ async function handleTaskSubmit(event) {
     notes: elements.taskNotesInput.value.trim(),
     category: elements.taskCategoryInput.value,
     dueAt: localInputToIso(elements.taskDueInput.value),
-    reminderAt: elements.taskReminderInput.value ? localInputToIso(elements.taskReminderInput.value) : "",
     status: "open",
   };
 
@@ -179,27 +185,40 @@ async function handleTaskSubmit(event) {
     }
   }
 
-  updateConnectionState("loading", payload.id ? "Updating task in Google Sheets..." : "Saving task to Google Sheets...");
+  updateConnectionState("loading", payload.id ? "Updating task..." : "Saving task...");
 
   try {
     const response = await apiRequest("save", { task: payload });
     upsertTaskInState(response.task);
-    state.lastSyncLabel = `Synced ${formatTime(new Date())}`;
-    updateConnectionState("connected", `Task saved. ${state.lastSyncLabel}.`);
-    resetForm();
+    closeTaskModal();
     scheduleNotifications();
     render();
+    updateConnectionState("connected", "Task saved.");
   } catch (error) {
     updateConnectionState("error", `Save failed. ${error.message}`);
   }
 }
 
+async function handleModalDelete() {
+  const taskId = elements.taskIdInput.value.trim();
+  if (!taskId) {
+    return;
+  }
+  await deleteTask(taskId, { skipConfirm: true, closeModal: true });
+}
+
 function setView(view) {
   state.selectedView = view;
-  elements.boardToggle.classList.toggle("active", view === "board");
-  elements.calendarToggle.classList.toggle("active", view === "calendar");
+  elements.boardToggle.classList.toggle("on", view === "board");
+  elements.calendarToggle.classList.toggle("on", view === "calendar");
   elements.boardView.classList.toggle("hidden", view !== "board");
   elements.calendarView.classList.toggle("hidden", view !== "calendar");
+}
+
+function setCategoryFilter(filter) {
+  state.selectedCategoryFilter = filter;
+  renderSidebarSummary();
+  renderBoard();
 }
 
 function changeMonth(offset) {
@@ -215,6 +234,42 @@ function jumpToToday() {
   state.selectedDateKey = dateKey(today);
   renderCalendar();
   renderAgenda();
+}
+
+function openTaskModal(options = {}) {
+  const {
+    categoryId = CATEGORY_META[0].id,
+    dueValue = "",
+    preserveValues = false,
+  } = options;
+
+  if (!preserveValues) {
+    resetForm();
+    elements.taskCategoryInput.value = categoryId;
+    if (dueValue) {
+      elements.taskDueInput.value = dueValue;
+    }
+  }
+
+  elements.taskModalWrap.classList.add("on");
+  window.setTimeout(() => elements.taskTitleInput.focus(), 20);
+}
+
+function closeTaskModal() {
+  elements.taskModalWrap.classList.remove("on");
+  resetForm();
+}
+
+function handleModalBackdrop(event) {
+  if (event.target === elements.taskModalWrap) {
+    closeTaskModal();
+  }
+}
+
+function handleGlobalKeydown(event) {
+  if (event.key === "Escape" && elements.taskModalWrap.classList.contains("on")) {
+    closeTaskModal();
+  }
 }
 
 async function toggleTaskCompletion(taskId) {
@@ -235,34 +290,38 @@ async function toggleTaskCompletion(taskId) {
       },
     });
     upsertTaskInState(response.task);
-    state.lastSyncLabel = `Synced ${formatTime(new Date())}`;
-    updateConnectionState("connected", `Task updated. ${state.lastSyncLabel}.`);
     scheduleNotifications();
     render();
+    updateConnectionState("connected", "Task updated.");
   } catch (error) {
     updateConnectionState("error", `Status change failed. ${error.message}`);
   }
 }
 
-async function deleteTask(taskId) {
+async function deleteTask(taskId, options = {}) {
+  const { skipConfirm = false, closeModal = false } = options;
   const task = state.tasks.find((entry) => entry.id === taskId);
   if (!task) {
     return;
   }
 
-  const shouldDelete = window.confirm(`Delete "${task.title}"? The history entry will stay in Google Sheets.`);
-  if (!shouldDelete) {
-    return;
+  if (!skipConfirm) {
+    const shouldDelete = window.confirm(`Delete "${task.title}"? The history entry will stay in Google Sheets.`);
+    if (!shouldDelete) {
+      return;
+    }
   }
 
   try {
     updateConnectionState("loading", "Deleting task...");
     await apiRequest("delete", { id: taskId });
     state.tasks = state.tasks.filter((entry) => entry.id !== taskId);
-    state.lastSyncLabel = `Synced ${formatTime(new Date())}`;
-    updateConnectionState("connected", `Task deleted. ${state.lastSyncLabel}.`);
     scheduleNotifications();
     render();
+    updateConnectionState("connected", "Task deleted.");
+    if (closeModal) {
+      closeTaskModal();
+    }
   } catch (error) {
     updateConnectionState("error", `Delete failed. ${error.message}`);
   }
@@ -274,154 +333,152 @@ function editTask(taskId) {
     return;
   }
 
-  elements.formTitle.textContent = "Edit task";
+  state.editingTaskId = task.id;
+  elements.formTitle.textContent = "Edit Task";
   elements.taskIdInput.value = task.id;
   elements.taskTitleInput.value = task.title || "";
   elements.taskCategoryInput.value = task.category || CATEGORY_META[0].id;
   elements.taskDueInput.value = isoToLocalInput(task.dueAt);
-  elements.taskReminderInput.value = isoToLocalInput(task.reminderAt);
   elements.taskNotesInput.value = task.notes || "";
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  elements.deleteTaskBtn.classList.remove("hidden");
+  elements.taskModalWrap.classList.add("on");
+  window.setTimeout(() => elements.taskTitleInput.focus(), 20);
 }
 
 function resetForm() {
-  elements.formTitle.textContent = "Add a task";
+  state.editingTaskId = "";
+  elements.formTitle.textContent = "Add Task";
   elements.taskForm.reset();
   elements.taskIdInput.value = "";
   elements.taskCategoryInput.value = CATEGORY_META[0].id;
+  elements.deleteTaskBtn.classList.add("hidden");
 }
 
 function render() {
-  updateHero();
-  renderMetrics();
+  renderSidebarSummary();
+  renderProgress();
   renderBoard();
   renderCalendar();
   renderAgenda();
 }
 
-function updateHero() {
-  elements.heroDate.textContent = new Intl.DateTimeFormat(undefined, {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  }).format(new Date());
-  elements.heroTitle.textContent = `${state.profileName}, plan the next move.`;
-}
-
-function renderMetrics() {
-  const openTasks = state.tasks.filter((task) => task.status !== "completed");
-  const dueToday = openTasks.filter((task) => isSameDay(new Date(task.dueAt), new Date())).length;
-  const next12Hours = openTasks.filter((task) => {
-    const hours = hoursUntil(task.dueAt);
-    return hours >= 0 && hours <= 12;
-  }).length;
-  const weekend = openTasks.filter((task) => task.category === "weekend").length;
-  const completed = state.tasks.filter((task) => task.status === "completed").length;
-
-  const metrics = [
-    { label: "Open tasks", value: openTasks.length },
-    { label: "Due today", value: dueToday },
-    { label: "Next 12 hrs", value: next12Hours },
-    { label: "Weekend queue", value: weekend },
-    { label: "Completed", value: completed },
-    { label: "Last sync", value: state.lastSyncLabel.replace("Synced ", "") },
+function renderSidebarSummary() {
+  const rows = [
+    {
+      id: "all",
+      label: "All Tasks",
+      accent: "#9898a8",
+      count: state.tasks.filter((task) => task.status !== "completed").length,
+    },
+    ...CATEGORY_META.map((category) => ({
+      id: category.id,
+      label: category.label,
+      accent: category.accent,
+      count: state.tasks.filter((task) => task.category === category.id && task.status !== "completed").length,
+    })),
   ];
 
-  elements.metricsGrid.innerHTML = "";
-  metrics.forEach((metric) => {
-    const fragment = elements.metricCardTemplate.content.cloneNode(true);
-    fragment.querySelector(".metric-label").textContent = metric.label;
-    fragment.querySelector(".metric-value").textContent = metric.value;
-    elements.metricsGrid.appendChild(fragment);
+  elements.categorySummaryList.innerHTML = "";
+  rows.forEach((row) => {
+    const item = document.createElement("div");
+    item.className = `cat ${state.selectedCategoryFilter === row.id ? "on" : ""}`;
+    item.innerHTML = `
+      <span class="cdot" style="background:${row.accent}"></span>
+      <span class="cname">${row.label}</span>
+      <span class="ccnt">${row.count}</span>
+    `;
+    item.addEventListener("click", () => setCategoryFilter(row.id));
+    elements.categorySummaryList.appendChild(item);
   });
+}
+
+function renderProgress() {
+  const total = state.tasks.length;
+  const completed = state.tasks.filter((task) => task.status === "completed").length;
+  const percent = total ? Math.round((completed / total) * 100) : 0;
+
+  elements.progressCount.textContent = `${completed}/${total}`;
+  elements.progressBarFill.style.width = `${percent}%`;
 }
 
 function renderBoard() {
   elements.boardView.innerHTML = "";
+
+  const categories = state.selectedCategoryFilter === "all"
+    ? CATEGORY_META
+    : CATEGORY_META.filter((category) => category.id === state.selectedCategoryFilter);
+
   const grid = document.createElement("div");
-  grid.className = "board-grid";
+  grid.className = `grid ${categories.length === 1 ? "single-column" : ""}`.trim();
 
-  CATEGORY_META.forEach((category) => {
-    const column = document.createElement("article");
-    column.className = "category-column";
-    column.appendChild(renderColumnHead(category, state.tasks.filter((task) => task.category === category.id).length));
-
+  categories.forEach((category) => {
     const tasks = sortTasks(state.tasks.filter((task) => task.category === category.id));
+    const openCount = tasks.filter((task) => task.status !== "completed").length;
+
+    const column = document.createElement("article");
+    column.className = "col";
+    column.innerHTML = `
+      <div class="col-head">
+        <div class="stripe" style="background:${category.accent}"></div>
+        <div>
+          <div class="col-title">${category.label}</div>
+          <div class="col-sub">${category.shortLabel}</div>
+        </div>
+        <div class="col-cnt" style="color:${category.accent}">${openCount}</div>
+      </div>
+    `;
+
+    const body = document.createElement("div");
+    body.className = "col-body";
+
     const list = document.createElement("div");
     list.className = "task-list";
 
     if (!tasks.length) {
-      list.innerHTML = `<div class="empty-state">Nothing here right now.</div>`;
+      list.innerHTML = `<div class="empty-state">Nothing here</div>`;
     } else {
-      tasks.forEach((task) => list.appendChild(renderTaskCard(task, category)));
+      tasks.forEach((task) => list.appendChild(renderTaskRow(task, category)));
     }
 
-    column.appendChild(list);
+    const addButton = document.createElement("button");
+    addButton.className = "col-add";
+    addButton.type = "button";
+    addButton.textContent = "+ Add task";
+    addButton.addEventListener("click", () => openTaskModal({ categoryId: category.id }));
+
+    body.append(list, addButton);
+    column.appendChild(body);
     grid.appendChild(column);
   });
 
   elements.boardView.appendChild(grid);
 }
 
-function renderColumnHead(category, count) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "column-head";
-  wrapper.innerHTML = `
-    <div>
-      <h3 class="column-title">${category.label}</h3>
-      <p class="column-subtitle">${category.subtitle}</p>
-    </div>
-    <div>
-      <div class="column-badge" style="background:${category.accent}">${category.shortLabel}</div>
-      <p class="task-count">${count} task${count === 1 ? "" : "s"}</p>
-    </div>
-  `;
-  return wrapper;
-}
+function renderTaskRow(task, category) {
+  const row = document.createElement("div");
+  row.className = `task ${task.status === "completed" ? "done" : ""}`.trim();
 
-function renderTaskCard(task, category) {
-  const card = document.createElement("article");
-  card.className = `task-card ${task.status === "completed" ? "completed" : ""}`;
+  const checkbox = document.createElement("button");
+  checkbox.className = `chk ${task.status === "completed" ? "on" : ""}`.trim();
+  checkbox.type = "button";
+  checkbox.setAttribute("aria-label", task.status === "completed" ? "Mark task open" : "Mark task done");
+  checkbox.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleTaskCompletion(task.id);
+  });
 
-  card.innerHTML = `
-    <div class="task-headline">
-      <div>
-        <h4 class="task-title">${escapeHtml(task.title || "Untitled task")}</h4>
-      </div>
-      <div class="task-status">${task.status === "completed" ? "Completed" : formatRelative(task.dueAt)}</div>
-    </div>
-    <p class="task-notes">${task.notes ? escapeHtml(task.notes) : "No notes added."}</p>
-    <div class="task-meta">
-      <span class="meta-pill">Due ${formatDateTime(task.dueAt)}</span>
-      <span class="meta-pill">${task.reminderAt ? `Reminder ${formatDateTime(task.reminderAt)}` : "No reminder"}</span>
-      <span class="meta-pill">${category.shortLabel}</span>
-    </div>
-  `;
+  const trigger = document.createElement("button");
+  trigger.className = "task-button";
+  trigger.type = "button";
+  trigger.addEventListener("click", () => editTask(task.id));
 
-  const actions = document.createElement("div");
-  actions.className = "task-actions";
+  const title = document.createElement("div");
+  title.className = "task-title";
+  title.textContent = task.title || "Untitled task";
 
-  const completeButton = document.createElement("button");
-  completeButton.className = "btn btn-secondary";
-  completeButton.type = "button";
-  completeButton.textContent = task.status === "completed" ? "Mark open" : "Mark done";
-  completeButton.addEventListener("click", () => toggleTaskCompletion(task.id));
-
-  const editButton = document.createElement("button");
-  editButton.className = "btn btn-secondary";
-  editButton.type = "button";
-  editButton.textContent = "Edit";
-  editButton.addEventListener("click", () => editTask(task.id));
-
-  const deleteButton = document.createElement("button");
-  deleteButton.className = "btn btn-secondary";
-  deleteButton.type = "button";
-  deleteButton.textContent = "Delete";
-  deleteButton.addEventListener("click", () => deleteTask(task.id));
-
-  actions.append(completeButton, editButton, deleteButton);
-  card.appendChild(actions);
-  return card;
+  trigger.appendChild(title);
+  row.append(checkbox, trigger);
+  return row;
 }
 
 function renderCalendar() {
@@ -434,12 +491,6 @@ function renderCalendar() {
   const taskMap = groupTasksByDay(state.tasks);
 
   elements.calendarGrid.innerHTML = "";
-  WEEKDAY_LABELS.forEach((label) => {
-    const weekday = document.createElement("div");
-    weekday.className = "calendar-weekday";
-    weekday.textContent = label;
-    elements.calendarGrid.appendChild(weekday);
-  });
 
   allDays.forEach((day) => {
     const key = dateKey(day.date);
@@ -452,15 +503,15 @@ function renderCalendar() {
       key === dateKey(new Date()) ? "today" : "",
     ].filter(Boolean).join(" ");
 
-    const chips = dayTasks.slice(0, 3).map((task) => {
+    const chips = dayTasks.slice(0, 2).map((task) => {
       const color = categoryById(task.category).accent;
-      return `<span class="calendar-task-chip" style="background:${color}">${escapeHtml(task.title)}</span>`;
+      return `<span class="calendar-task-chip" style="background:${color}22;color:${color}">${escapeHtml(task.title)}</span>`;
     }).join("");
 
     cell.innerHTML = `
       <div class="calendar-date">
         <span class="day-number">${day.date.getDate()}</span>
-        <span>${dayTasks.length ? `${dayTasks.length} item${dayTasks.length === 1 ? "" : "s"}` : ""}</span>
+        <span>${dayTasks.length ? dayTasks.length : ""}</span>
       </div>
       ${chips}
     `;
@@ -469,6 +520,9 @@ function renderCalendar() {
       state.selectedDateKey = key;
       renderCalendar();
       renderAgenda();
+      if (day.inCurrentMonth) {
+        openTaskModal({ dueValue: isoForSelectedDay(day.date) });
+      }
     });
 
     elements.calendarGrid.appendChild(cell);
@@ -492,7 +546,7 @@ function renderAgenda() {
   }
 
   dayTasks.forEach((task) => {
-    elements.agendaList.appendChild(renderTaskCard(task, categoryById(task.category)));
+    elements.agendaList.appendChild(renderTaskRow(task, categoryById(task.category)));
   });
 }
 
@@ -535,17 +589,17 @@ function scheduleNotifications() {
   const sentReminders = safeParse(localStorage.getItem(REMINDER_LOG_KEY), {});
 
   state.tasks
-    .filter((task) => task.status !== "completed" && task.reminderAt)
+    .filter((task) => task.status !== "completed" && task.dueAt)
     .forEach((task) => {
-      const reminderAt = new Date(task.reminderAt).getTime();
-      const reminderKey = `${task.id}:${task.reminderAt}`;
-      if (!Number.isFinite(reminderAt) || reminderAt <= Date.now() || sentReminders[reminderKey]) {
+      const dueAt = new Date(task.dueAt).getTime();
+      const reminderKey = `${task.id}:${task.dueAt}`;
+      if (!Number.isFinite(dueAt) || dueAt <= Date.now() || sentReminders[reminderKey]) {
         return;
       }
 
-      const timeout = reminderAt - Date.now();
+      const timeout = dueAt - Date.now();
       const timerId = window.setTimeout(() => {
-        new Notification("Task reminder", {
+        new Notification("Task due now", {
           body: `${task.title} - ${categoryById(task.category).label}`,
         });
         sentReminders[reminderKey] = true;
@@ -656,41 +710,11 @@ function isoToLocalInput(value) {
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
-function formatDateTime(value) {
-  if (!value) {
-    return "Not set";
-  }
-  return new Intl.DateTimeFormat(undefined, {
-    day: "numeric",
-    month: "short",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
-function formatRelative(value) {
-  const hours = hoursUntil(value);
-  if (hours < 0) {
-    return "Overdue";
-  }
-  if (hours < 1) {
-    return "Due soon";
-  }
-  if (hours < 24) {
-    return `${Math.round(hours)}h left`;
-  }
-  return `${Math.round(hours / 24)}d left`;
-}
-
-function hoursUntil(value) {
-  return (new Date(value).getTime() - Date.now()) / 36e5;
-}
-
-function formatTime(date) {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
+function isoForSelectedDay(date) {
+  const value = new Date(date);
+  value.setHours(9, 0, 0, 0);
+  const offsetMs = value.getTimezoneOffset() * 60000;
+  return new Date(value.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
 function startOfMonth(date) {
@@ -701,13 +725,9 @@ function dateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function parseDateKey(key) {
-  const [year, month, day] = key.split("-").map(Number);
+function parseDateKey(value) {
+  const [year, month, day] = value.split("-").map((part) => Number(part));
   return new Date(year, month - 1, day);
-}
-
-function isSameDay(left, right) {
-  return dateKey(left) === dateKey(right);
 }
 
 function safeParse(value, fallback) {

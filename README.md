@@ -2,9 +2,9 @@
 
 Orbit Tasks is a personal to-do web app with:
 
-- your four fixed task categories
+- your five fixed task categories
 - a category board and a calendar view
-- browser reminder notifications
+- browser notifications when a task reaches its due time
 - Google Sheets as the only database
 - Netlify Functions as the server-side bridge
 
@@ -12,7 +12,7 @@ Orbit Tasks is a personal to-do web app with:
 
 - `index.html`: app structure
 - `styles.css`: visual design
-- `app.js`: task logic, calendar rendering, reminders, and API calls
+- `app.js`: task logic, calendar rendering, due-time notifications, and API calls
 - `netlify/functions/tasks.js`: Netlify Function that reads and writes Google Sheets
 - `netlify.toml`: Netlify config
 - `package.json`: dependencies and local dev scripts
@@ -22,6 +22,7 @@ Orbit Tasks is a personal to-do web app with:
 - Ultra important to be completed in next 12 hrs
 - Important to be done in next 24 hrs
 - Weekend Tasks
+- Meetings and events to reach on time
 - Do it at your leisure
 
 ## Google Sheets structure
@@ -73,5 +74,5 @@ Then open the local URL printed by Netlify.
 ## Notes
 
 - opening `index.html` directly as a `file://` URL will not work because the app expects the Netlify Function route
-- reminder notifications only fire while the page is open
+- due-time notifications only fire while the page is open
 - the Google Sheet remains the full source of truth and history

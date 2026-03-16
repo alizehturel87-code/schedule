@@ -7,143 +7,124 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="page-glow page-glow-a"></div>
-  <div class="page-glow page-glow-b"></div>
-
   <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand-block">
-        <p class="eyebrow">Personal command center</p>
-        <h1>Orbit Tasks</h1>
-        <p class="brand-copy">A focused to-do system with a deadline board, a calendar view, browser reminders, and Google Sheets history.</p>
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">&#9889;</span><span>TaskOS</span></div>
+
+      <div class="tabs">
+        <button id="boardToggle" class="tab on" type="button">Categories</button>
+        <button id="calendarToggle" class="tab" type="button">Calendar</button>
       </div>
 
-      <section class="sidebar-card">
-        <div class="section-heading">
-          <h2>Your setup</h2>
-          <span class="status-dot" id="connectionDot"></span>
-        </div>
+      <div class="topbar-spacer"></div>
 
-        <label class="field-label" for="profileNameInput">Display name</label>
-        <input id="profileNameInput" class="text-input" type="text" placeholder="Your name">
+      <button id="notifyBtn" class="notif-btn" type="button">
+        <span class="dot"></span>
+        <span>Reminders</span>
+      </button>
+    </header>
 
-        <div class="sidebar-actions">
-          <button id="saveSettingsBtn" class="btn btn-primary" type="button">Save preferences</button>
-          <button id="syncBtn" class="btn btn-secondary" type="button">Sync now</button>
-        </div>
+    <div class="dashboard">
+      <aside class="sidebar">
+        <div class="slabel">Categories</div>
+        <div id="categorySummaryList" class="category-summary"></div>
 
-        <p class="helper-copy" id="connectionStatus">Netlify will connect this app to Google Sheets through a serverless function.</p>
-      </section>
-
-      <section class="sidebar-card">
-        <div class="section-heading">
-          <h2>Reminders</h2>
-        </div>
-        <p class="helper-copy">Browser notifications fire for upcoming tasks when this app is open and permission is granted.</p>
-        <button id="notifyBtn" class="btn btn-secondary" type="button">Enable notifications</button>
-        <p class="helper-copy" id="notificationStatus">Notifications are not enabled yet.</p>
-      </section>
-
-      <section class="sidebar-card">
-        <div class="section-heading">
-          <h2>View mode</h2>
-        </div>
-        <div class="view-toggle">
-          <button id="boardToggle" class="toggle-pill active" type="button">Category view</button>
-          <button id="calendarToggle" class="toggle-pill" type="button">Calendar view</button>
-        </div>
-      </section>
-    </aside>
-
-    <main class="main-panel">
-      <header class="hero">
-        <div>
-          <p class="eyebrow" id="heroDate"></p>
-          <h2 id="heroTitle">Plan the next move.</h2>
-          <p class="hero-copy">Keep urgent work visible, map the week on a calendar, and store every change in Google Sheets.</p>
-        </div>
-        <div class="hero-metrics" id="metricsGrid"></div>
-      </header>
-
-      <section class="composer">
-        <div class="section-heading">
-          <h2 id="formTitle">Add a task</h2>
-          <button id="clearFormBtn" class="text-button" type="button">Clear form</button>
-        </div>
-
-        <form id="taskForm" class="task-form">
-          <input id="taskIdInput" type="hidden">
-
-          <div class="form-row form-row-wide">
-            <div class="form-field">
-              <label class="field-label" for="taskTitleInput">Task title</label>
-              <input id="taskTitleInput" class="text-input" type="text" maxlength="120" placeholder="Finish payment reminder flow" required>
-            </div>
+        <div class="slabel progress-label">Progress</div>
+        <div class="prog">
+          <div class="prog-top">
+            <span class="prog-label">Done</span>
+            <span class="prog-num" id="progressCount">0/0</span>
           </div>
-
-          <div class="form-row">
-            <div class="form-field">
-              <label class="field-label" for="taskCategoryInput">Category</label>
-              <select id="taskCategoryInput" class="text-input"></select>
-            </div>
-            <div class="form-field">
-              <label class="field-label" for="taskDueInput">Due date and time</label>
-              <input id="taskDueInput" class="text-input" type="datetime-local" required>
-            </div>
-            <div class="form-field">
-              <label class="field-label" for="taskReminderInput">Reminder time</label>
-              <input id="taskReminderInput" class="text-input" type="datetime-local">
-            </div>
+          <div class="prog-track">
+            <div class="prog-fill" id="progressBarFill" style="width:0%"></div>
           </div>
+        </div>
 
-          <div class="form-row form-row-wide">
-            <div class="form-field">
-              <label class="field-label" for="taskNotesInput">Notes</label>
-              <textarea id="taskNotesInput" class="text-input notes-input" rows="3" placeholder="Add context, subtasks, or links"></textarea>
-            </div>
-          </div>
+        <button id="sidebarAddTaskBtn" class="add-btn" type="button">+ Add task</button>
+      </aside>
 
-          <div class="form-actions">
-            <button id="saveTaskBtn" class="btn btn-primary" type="submit">Save task</button>
-          </div>
-        </form>
-      </section>
+      <main class="board-area">
+        <section id="boardView" class="view"></section>
 
-      <section id="boardView" class="view-panel"></section>
-
-      <section id="calendarView" class="view-panel hidden">
-        <div class="calendar-shell">
-          <div class="calendar-header">
-            <div>
-              <p class="eyebrow">Month planner</p>
+        <section id="calendarView" class="view hidden">
+          <div class="calendar-shell">
+            <div class="cal-nav">
+              <button id="prevMonthBtn" class="cal-nav-btn" type="button">&#8592;</button>
               <h2 id="calendarMonthLabel"></h2>
+              <button id="todayBtn" class="cal-nav-btn" type="button">Today</button>
+              <button id="nextMonthBtn" class="cal-nav-btn" type="button">&#8594;</button>
             </div>
-            <div class="calendar-nav">
-              <button id="prevMonthBtn" class="btn btn-secondary" type="button">Previous</button>
-              <button id="todayBtn" class="btn btn-secondary" type="button">Today</button>
-              <button id="nextMonthBtn" class="btn btn-secondary" type="button">Next</button>
+
+            <div class="cal-hrow">
+              <div class="cal-dname">SUN</div>
+              <div class="cal-dname">MON</div>
+              <div class="cal-dname">TUE</div>
+              <div class="cal-dname">WED</div>
+              <div class="cal-dname">THU</div>
+              <div class="cal-dname">FRI</div>
+              <div class="cal-dname">SAT</div>
             </div>
+
+            <div class="cal-grid" id="calendarGrid"></div>
           </div>
 
-          <div class="calendar-grid" id="calendarGrid"></div>
-        </div>
-
-        <div class="agenda-shell">
-          <div class="section-heading">
-            <h2 id="agendaTitle">Selected day</h2>
+          <div class="agenda-shell">
+            <div class="agenda-head">
+              <h2 id="agendaTitle">Selected day</h2>
+            </div>
+            <div id="agendaList" class="agenda-list"></div>
           </div>
-          <div id="agendaList" class="agenda-list"></div>
-        </div>
-      </section>
-    </main>
+        </section>
+      </main>
+    </div>
+
+    <div class="hidden-ui" aria-hidden="true">
+      <input id="profileNameInput" type="text" value="Operator">
+      <button id="saveSettingsBtn" type="button">Save</button>
+      <button id="syncBtn" type="button">Sync</button>
+      <span id="connectionDot"></span>
+      <p id="connectionStatus"></p>
+      <p id="notificationStatus"></p>
+    </div>
   </div>
 
-  <template id="metricCardTemplate">
-    <article class="metric-card">
-      <p class="metric-label"></p>
-      <p class="metric-value"></p>
-    </article>
-  </template>
+  <div id="taskModalWrap" class="modal-wrap">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="formTitle">Add Task</h3>
+        <button id="clearFormBtn" class="mcancel" type="button">Cancel</button>
+      </div>
+
+      <form id="taskForm" class="task-form">
+        <input id="taskIdInput" type="hidden">
+
+        <div class="mfield">
+          <label for="taskTitleInput">Task name</label>
+          <input id="taskTitleInput" type="text" maxlength="120" placeholder="What needs to be done?" required>
+        </div>
+
+        <div class="mfield">
+          <label for="taskCategoryInput">Category</label>
+          <select id="taskCategoryInput"></select>
+        </div>
+
+        <div class="mfield">
+          <label for="taskDueInput">Due date</label>
+          <input id="taskDueInput" type="datetime-local" required>
+        </div>
+
+        <div class="mfield">
+          <label for="taskNotesInput">Notes</label>
+          <textarea id="taskNotesInput" rows="3" placeholder="Optional details"></textarea>
+        </div>
+
+        <div class="mactions">
+          <button id="deleteTaskBtn" class="mcancel hidden" type="button">Delete</button>
+          <button id="saveTaskBtn" class="mbtn" type="submit">Save task</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
