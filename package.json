@@ -1,0 +1,12 @@
+{
+  "name": "orbit-tasks",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "netlify dev",
+    "build": "echo \"Static site build not required\""
+  },
+  "dependencies": {
+    "googleapis": "^148.0.0"
+  }
+}
