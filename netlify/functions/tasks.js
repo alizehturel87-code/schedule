@@ -8,7 +8,6 @@ const TASK_HEADERS = [
   "category",
   "status",
   "dueAt",
-  "reminderAt",
   "createdAt",
   "updatedAt",
   "completedAt",
@@ -22,7 +21,6 @@ const HISTORY_HEADERS = [
   "category",
   "status",
   "dueAt",
-  "reminderAt",
   "payload",
 ];
 
@@ -140,8 +138,8 @@ async function ensureSheetsStructure(sheets, spreadsheetId) {
     (refreshed.data.sheets || []).map((sheet) => [sheet.properties.title, sheet.properties.sheetId])
   );
 
-  await ensureHeaders(sheets, spreadsheetId, TASK_SHEET, TASK_HEADERS);
-  await ensureHeaders(sheets, spreadsheetId, HISTORY_SHEET, HISTORY_HEADERS);
+  await ensureSheetSchema(sheets, spreadsheetId, TASK_SHEET, TASK_HEADERS);
+  await ensureSheetSchema(sheets, spreadsheetId, HISTORY_SHEET, HISTORY_HEADERS);
 
   return {
     taskSheetId: sheetMap.get(TASK_SHEET),
@@ -149,26 +147,52 @@ async function ensureSheetsStructure(sheets, spreadsheetId) {
   };
 }
 
-async function ensureHeaders(sheets, spreadsheetId, sheetName, headers) {
-  const existing = await sheets.spreadsheets.values.get({
+async function ensureSheetSchema(sheets, spreadsheetId, sheetName, nextHeaders) {
+  const result = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${sheetName}!1:1`,
+    range: `${sheetName}!A:Z`,
   });
 
-  const firstRow = existing.data.values?.[0] || [];
-  const matches = headers.every((header, index) => firstRow[index] === header);
-  if (matches) {
+  const values = result.data.values || [];
+  const existingHeaders = values[0] || [];
+
+  if (headersMatch(existingHeaders, nextHeaders)) {
     return;
   }
+
+  const migratedRows = values
+    .slice(1)
+    .filter((row) => row.some((cell) => String(cell || "").trim()))
+    .map((row) => remapRow(existingHeaders, row, nextHeaders));
+
+  await sheets.spreadsheets.values.clear({
+    spreadsheetId,
+    range: `${sheetName}!A:Z`,
+  });
 
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range: `${sheetName}!A1`,
     valueInputOption: "RAW",
     requestBody: {
-      values: [headers],
+      values: [nextHeaders, ...migratedRows],
     },
   });
+}
+
+function headersMatch(left, right) {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return right.every((header, index) => left[index] === header);
+}
+
+function remapRow(existingHeaders, row, nextHeaders) {
+  const source = {};
+  existingHeaders.forEach((header, index) => {
+    source[header] = row[index] || "";
+  });
+  return nextHeaders.map((header) => source[header] || "");
 }
 
 async function listTasks(sheets, spreadsheetId) {
@@ -179,14 +203,16 @@ async function listTasks(sheets, spreadsheetId) {
 async function getTaskRows(sheets, spreadsheetId) {
   const result = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${TASK_SHEET}!A2:J`,
+    range: `${TASK_SHEET}!A:Z`,
   });
 
   const values = result.data.values || [];
+  const headers = values[0] || TASK_HEADERS;
   return values
+    .slice(1)
     .map((row, index) => ({
       rowNumber: index + 2,
-      task: rowToTask(row),
+      task: rowToTask(row, headers),
     }))
     .filter((entry) => entry.task.id);
 }
@@ -202,7 +228,7 @@ async function saveTask(sheets, spreadsheetId, input) {
   if (existingRow) {
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `${TASK_SHEET}!A${existingRow.rowNumber}:J${existingRow.rowNumber}`,
+      range: `${TASK_SHEET}!A${existingRow.rowNumber}:${columnLetter(TASK_HEADERS.length)}${existingRow.rowNumber}`,
       valueInputOption: "RAW",
       requestBody: {
         values: [rowValues],
@@ -214,7 +240,7 @@ async function saveTask(sheets, spreadsheetId, input) {
 
   await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: `${TASK_SHEET}!A:J`,
+    range: `${TASK_SHEET}!A:${columnLetter(TASK_HEADERS.length)}`,
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
@@ -260,7 +286,7 @@ async function deleteTask(sheets, spreadsheetId, metadata, taskId) {
 async function appendHistory(sheets, spreadsheetId, action, task) {
   await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: `${HISTORY_SHEET}!A:I`,
+    range: `${HISTORY_SHEET}!A:${columnLetter(HISTORY_HEADERS.length)}`,
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
@@ -272,7 +298,6 @@ async function appendHistory(sheets, spreadsheetId, action, task) {
         task.category || "",
         task.status || "",
         task.dueAt || "",
-        task.reminderAt || "",
         JSON.stringify(task),
       ]],
     },
@@ -300,7 +325,6 @@ function normalizeTask(input, current, now) {
     category: String(input.category).trim(),
     status,
     dueAt: String(input.dueAt).trim(),
-    reminderAt: String(input.reminderAt || "").trim(),
     createdAt: input.createdAt || current?.createdAt || now,
     updatedAt: now,
     completedAt: status === "completed" ? (input.completedAt || current?.completedAt || now) : "",
@@ -311,10 +335,21 @@ function taskToRow(task) {
   return TASK_HEADERS.map((header) => task[header] || "");
 }
 
-function rowToTask(row) {
+function rowToTask(row, headers = TASK_HEADERS) {
   const task = {};
-  TASK_HEADERS.forEach((header, index) => {
+  headers.forEach((header, index) => {
     task[header] = row[index] || "";
   });
   return task;
+}
+
+function columnLetter(index) {
+  let current = index;
+  let result = "";
+  while (current > 0) {
+    const remainder = (current - 1) % 26;
+    result = String.fromCharCode(65 + remainder) + result;
+    current = Math.floor((current - 1) / 26);
+  }
+  return result;
 }

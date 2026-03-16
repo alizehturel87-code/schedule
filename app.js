@@ -168,7 +168,7 @@ async function handleTaskSubmit(event) {
     id: elements.taskIdInput.value.trim(),
     title: elements.taskTitleInput.value.trim(),
     notes: elements.taskNotesInput.value.trim(),
-    category: elements.taskCategoryInput.value,
+    category: categoryById(elements.taskCategoryInput.value).label,
     dueAt: localInputToIso(elements.taskDueInput.value),
     status: "open",
   };
@@ -339,7 +339,7 @@ function editTask(taskId) {
   elements.formTitle.textContent = "Edit Task";
   elements.taskIdInput.value = task.id;
   elements.taskTitleInput.value = task.title || "";
-  elements.taskCategoryInput.value = task.category || CATEGORY_META[0].id;
+  elements.taskCategoryInput.value = canonicalCategoryId(task.category);
   elements.taskDueInput.value = isoToLocalInput(task.dueAt);
   elements.taskNotesInput.value = task.notes || "";
   elements.deleteTaskBtn.classList.remove("hidden");
@@ -376,7 +376,7 @@ function renderSidebarSummary() {
       id: category.id,
       label: category.label,
       accent: category.accent,
-      count: state.tasks.filter((task) => task.category === category.id && task.status !== "completed").length,
+      count: state.tasks.filter((task) => canonicalCategoryId(task.category) === category.id && task.status !== "completed").length,
     })),
   ];
 
@@ -414,7 +414,7 @@ function renderBoard() {
   grid.className = `grid ${categories.length === 1 ? "single-column" : ""}`.trim();
 
   categories.forEach((category) => {
-    const tasks = sortTasks(state.tasks.filter((task) => task.category === category.id));
+    const tasks = sortTasks(state.tasks.filter((task) => canonicalCategoryId(task.category) === category.id));
     const openCount = tasks.filter((task) => task.status !== "completed").length;
 
     const column = document.createElement("article");
@@ -706,16 +706,29 @@ function sortTasks(tasks) {
 }
 
 function categoryById(categoryId) {
-  return CATEGORY_META.find((category) => category.id === categoryId) || CATEGORY_META[0];
+  return CATEGORY_META.find((category) => category.id === canonicalCategoryId(categoryId)) || CATEGORY_META[0];
+}
+
+function canonicalCategoryId(value) {
+  const input = String(value || "").trim().toLowerCase();
+  const match = CATEGORY_META.find((category) => (
+    category.id.toLowerCase() === input
+    || category.label.toLowerCase() === input
+    || category.optionLabel.toLowerCase() === input
+  ));
+  return match?.id || CATEGORY_META[0].id;
 }
 
 function localInputToIso(value) {
-  return value ? new Date(value).toISOString() : "";
+  return value ? value.slice(0, 16) : "";
 }
 
 function isoToLocalInput(value) {
   if (!value) {
     return "";
+  }
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
+    return value;
   }
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) {
@@ -728,8 +741,7 @@ function isoToLocalInput(value) {
 function isoForSelectedDay(date) {
   const value = new Date(date);
   value.setHours(9, 0, 0, 0);
-  const offsetMs = value.getTimezoneOffset() * 60000;
-  return new Date(value.getTime() - offsetMs).toISOString().slice(0, 16);
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}T09:00`;
 }
 
 function startOfMonth(date) {
