@@ -3,9 +3,9 @@ const CATEGORY_META = [
     id: "needs_priority",
     label: "Needs Priority",
     optionLabel: "List now, prioritize later",
-    shortLabel: "Local only",
+    shortLabel: "Backlog",
     accent: "#8f90a6",
-    syncsToSheets: false,
+    syncsToSheets: true,
   },
   {
     id: "ultra_12",
@@ -50,18 +50,18 @@ const CATEGORY_META = [
 ];
 
 const SETTINGS_KEY = "orbit_tasks_settings_v1";
-const DRAFT_TASKS_KEY = "orbit_tasks_drafts_v1";
 const REMINDER_LOG_KEY = "orbit_tasks_reminders_v1";
 const API_ENDPOINT = "/.netlify/functions/tasks";
 
 const state = {
   tasks: [],
+  broadHeads: [],
   profileName: "Operator",
   selectedView: "board",
   selectedDateKey: dateKey(new Date()),
   selectedCategoryFilter: "all",
+  selectedBroadHeadFilter: "all",
   calendarCursor: startOfMonth(new Date()),
-  editingTaskId: "",
 };
 
 const reminderTimers = new Map();
@@ -76,16 +76,27 @@ const elements = {
   notificationStatus: document.getElementById("notificationStatus"),
   statusToast: document.getElementById("statusToast"),
   notifyBtn: document.getElementById("notifyBtn"),
+  broadHeadSummaryList: document.getElementById("broadHeadSummaryList"),
   categorySummaryList: document.getElementById("categorySummaryList"),
   progressCount: document.getElementById("progressCount"),
   progressBarFill: document.getElementById("progressBarFill"),
+  sidebarAddHeadBtn: document.getElementById("sidebarAddHeadBtn"),
   sidebarAddTaskBtn: document.getElementById("sidebarAddTaskBtn"),
+  headModalWrap: document.getElementById("headModalWrap"),
+  headFormTitle: document.getElementById("headFormTitle"),
+  headForm: document.getElementById("headForm"),
+  broadHeadIdInput: document.getElementById("broadHeadIdInput"),
+  broadHeadTitleInput: document.getElementById("broadHeadTitleInput"),
+  broadHeadNotesInput: document.getElementById("broadHeadNotesInput"),
+  clearHeadFormBtn: document.getElementById("clearHeadFormBtn"),
+  deleteBroadHeadBtn: document.getElementById("deleteBroadHeadBtn"),
   formTitle: document.getElementById("formTitle"),
   taskModalWrap: document.getElementById("taskModalWrap"),
   deleteTaskBtn: document.getElementById("deleteTaskBtn"),
   taskForm: document.getElementById("taskForm"),
   taskIdInput: document.getElementById("taskIdInput"),
   taskTitleInput: document.getElementById("taskTitleInput"),
+  taskBroadHeadInput: document.getElementById("taskBroadHeadInput"),
   taskCategoryInput: document.getElementById("taskCategoryInput"),
   taskDueInput: document.getElementById("taskDueInput"),
   taskNotesInput: document.getElementById("taskNotesInput"),
@@ -108,6 +119,7 @@ init();
 function init() {
   hydrateSettings();
   buildCategoryOptions();
+  buildBroadHeadOptions();
   bindEvents();
   refreshNotificationStatus();
   render();
@@ -126,20 +138,46 @@ function buildCategoryOptions() {
   )).join("");
 }
 
+function buildBroadHeadOptions(selectedId = "") {
+  const options = [
+    `<option value="">No broad head yet</option>`,
+    ...state.broadHeads.map((head) => (
+      `<option value="${head.id}">${escapeHtml(head.title)}</option>`
+    )),
+  ];
+
+  elements.taskBroadHeadInput.innerHTML = options.join("");
+
+  if (selectedId && headById(selectedId)) {
+    elements.taskBroadHeadInput.value = selectedId;
+    return;
+  }
+
+  elements.taskBroadHeadInput.value = "";
+}
+
 function bindEvents() {
   elements.saveSettingsBtn.addEventListener("click", saveSettings);
   elements.syncBtn.addEventListener("click", syncTasks);
   elements.notifyBtn.addEventListener("click", enableNotifications);
-  elements.sidebarAddTaskBtn.addEventListener("click", () => openTaskModal());
+  elements.sidebarAddHeadBtn.addEventListener("click", () => openHeadModal());
+  elements.sidebarAddTaskBtn.addEventListener("click", () => openTaskModal({
+    categoryId: state.selectedCategoryFilter !== "all" ? state.selectedCategoryFilter : CATEGORY_META[0].id,
+    broadHeadId: state.selectedBroadHeadFilter !== "all" ? state.selectedBroadHeadFilter : "",
+  }));
   elements.boardToggle.addEventListener("click", () => setView("board"));
   elements.calendarToggle.addEventListener("click", () => setView("calendar"));
   elements.taskForm.addEventListener("submit", handleTaskSubmit);
   elements.clearFormBtn.addEventListener("click", closeTaskModal);
   elements.deleteTaskBtn.addEventListener("click", handleModalDelete);
+  elements.headForm.addEventListener("submit", handleBroadHeadSubmit);
+  elements.clearHeadFormBtn.addEventListener("click", closeHeadModal);
+  elements.deleteBroadHeadBtn.addEventListener("click", handleBroadHeadDelete);
   elements.prevMonthBtn.addEventListener("click", () => changeMonth(-1));
   elements.nextMonthBtn.addEventListener("click", () => changeMonth(1));
   elements.todayBtn.addEventListener("click", jumpToToday);
-  elements.taskModalWrap.addEventListener("click", handleModalBackdrop);
+  elements.taskModalWrap.addEventListener("click", handleTaskModalBackdrop);
+  elements.headModalWrap.addEventListener("click", handleHeadModalBackdrop);
   document.addEventListener("keydown", handleGlobalKeydown);
 }
 
@@ -157,19 +195,89 @@ async function syncTasks() {
     return;
   }
 
-  updateConnectionState("loading", "Syncing tasks from Google Sheets...");
+  updateConnectionState("loading", "Syncing workspace from Google Sheets...");
 
   try {
     const response = await apiRequest("list");
-    const remoteTasks = response.tasks || [];
-    const draftTasks = loadDraftTasks();
-    state.tasks = sortTasks([...remoteTasks, ...draftTasks]);
-    const draftSuffix = draftTasks.length ? ` ${draftTasks.length} local drafts still need priority.` : "";
-    updateConnectionState("connected", `${remoteTasks.length} tasks loaded from Google Sheets.${draftSuffix}`);
+    state.broadHeads = sortBroadHeads((response.broadHeads || []).map(normalizeBroadHeadRecord));
+    state.tasks = sortTasks((response.tasks || []).map((task) => normalizeTaskRecord(task, state.broadHeads)));
+    normalizeActiveFilters();
+    buildBroadHeadOptions(elements.taskBroadHeadInput.value);
     scheduleNotifications();
     render();
+    updateConnectionState(
+      "connected",
+      `${state.broadHeads.length} broad heads and ${state.tasks.length} tasks loaded from Google Sheets.`
+    );
   } catch (error) {
     updateConnectionState("error", `Sync failed. ${error.message}`);
+  }
+}
+
+async function handleBroadHeadSubmit(event) {
+  event.preventDefault();
+
+  if (window.location.protocol === "file:") {
+    updateConnectionState("error", "Run this app through Netlify or `netlify dev` before creating broad heads.");
+    return;
+  }
+
+  const payload = {
+    id: elements.broadHeadIdInput.value.trim(),
+    title: elements.broadHeadTitleInput.value.trim(),
+    notes: elements.broadHeadNotesInput.value.trim(),
+  };
+
+  if (!payload.title) {
+    updateConnectionState("error", "Broad head title is required.");
+    return;
+  }
+
+  updateConnectionState("loading", payload.id ? "Updating broad head..." : "Saving broad head...");
+
+  try {
+    const response = await apiRequest("saveHead", { head: payload });
+    upsertBroadHeadInState(response.broadHead);
+    buildBroadHeadOptions(response.broadHead.id);
+    render();
+    closeHeadModal();
+    updateConnectionState("connected", "Broad head saved.");
+  } catch (error) {
+    updateConnectionState("error", `Save failed. ${error.message}`);
+  }
+}
+
+async function handleBroadHeadDelete() {
+  const broadHeadId = elements.broadHeadIdInput.value.trim();
+  if (!broadHeadId) {
+    return;
+  }
+
+  const linkedTasks = state.tasks.filter((task) => task.broadHeadId === broadHeadId);
+  if (linkedTasks.length) {
+    updateConnectionState("error", "This broad head still has subtasks. Reassign or delete them first.");
+    return;
+  }
+
+  const broadHead = headById(broadHeadId);
+  const shouldDelete = window.confirm(`Delete broad head "${broadHead?.title || "Untitled"}"?`);
+  if (!shouldDelete) {
+    return;
+  }
+
+  try {
+    updateConnectionState("loading", "Deleting broad head...");
+    await apiRequest("deleteHead", { id: broadHeadId });
+    state.broadHeads = state.broadHeads.filter((head) => head.id !== broadHeadId);
+    if (state.selectedBroadHeadFilter === broadHeadId) {
+      state.selectedBroadHeadFilter = "all";
+    }
+    buildBroadHeadOptions();
+    render();
+    closeHeadModal();
+    updateConnectionState("connected", "Broad head deleted.");
+  } catch (error) {
+    updateConnectionState("error", `Delete failed. ${error.message}`);
   }
 }
 
@@ -181,72 +289,37 @@ async function handleTaskSubmit(event) {
     return;
   }
 
+  const broadHeadId = elements.taskBroadHeadInput.value.trim();
+  const broadHead = headById(broadHeadId);
+  const existingTask = taskById(elements.taskIdInput.value.trim());
   const payload = {
     id: elements.taskIdInput.value.trim(),
     title: elements.taskTitleInput.value.trim(),
     notes: elements.taskNotesInput.value.trim(),
     category: categoryById(elements.taskCategoryInput.value).label,
+    broadHeadId,
+    broadHeadTitle: broadHead?.title || "",
     dueAt: localInputToIso(elements.taskDueInput.value),
-    status: "open",
+    status: existingTask?.status === "completed" ? "completed" : "open",
+    createdAt: existingTask?.createdAt || "",
+    completedAt: existingTask?.completedAt || "",
   };
-  const selectedCategory = categoryById(elements.taskCategoryInput.value);
 
   if (!payload.title || !payload.dueAt) {
     updateConnectionState("error", "Task title and due time are required.");
     return;
   }
 
-  const existingTask = state.tasks.find((task) => task.id === payload.id);
-  if (existingTask && !isDraftTask(existingTask) && !selectedCategory.syncsToSheets) {
-    updateConnectionState("error", "Tasks already in Google Sheets must keep a real priority.");
-    return;
-  }
-
-  if (existingTask) {
-    payload.createdAt = existingTask.createdAt || "";
-    if (existingTask.status === "completed") {
-      payload.status = "completed";
-      payload.completedAt = existingTask.completedAt || new Date().toISOString();
-    }
-  }
-
-  if (!selectedCategory.syncsToSheets) {
-    saveDraftTask({
-      id: isDraftTask(existingTask) ? existingTask.id : createDraftId(),
-      title: payload.title,
-      notes: payload.notes,
-      category: selectedCategory.label,
-      dueAt: payload.dueAt,
-      status: payload.status,
-      createdAt: existingTask?.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      completedAt: payload.completedAt || "",
-      localOnly: true,
-    });
-    closeTaskModal();
-    scheduleNotifications();
-    render();
-    updateConnectionState("configured", "Task saved locally. It will sync after you assign a priority.");
-    return;
-  }
-
-  updateConnectionState("loading", payload.id ? "Updating task..." : "Saving task...");
+  updateConnectionState("loading", payload.id ? "Updating subtask..." : "Saving subtask...");
 
   try {
-    const draftId = isDraftTask(existingTask) ? existingTask.id : "";
-    if (draftId) {
-      payload.id = "";
-    }
     const response = await apiRequest("save", { task: payload });
-    if (draftId) {
-      removeDraftTask(draftId);
-      state.tasks = state.tasks.filter((task) => task.id !== draftId);
-    }
     upsertTaskInState(response.task);
-    closeTaskModal();
+    buildBroadHeadOptions(payload.broadHeadId);
     scheduleNotifications();
     render();
-    updateConnectionState("connected", "Task saved.");
+    closeTaskModal();
+    updateConnectionState("connected", "Subtask saved.");
   } catch (error) {
     updateConnectionState("error", `Save failed. ${error.message}`);
   }
@@ -259,7 +332,6 @@ async function handleModalDelete() {
   }
   await deleteTask(taskId, { skipConfirm: true, closeModal: true });
 }
-
 function setView(view) {
   state.selectedView = view;
   elements.boardToggle.classList.toggle("on", view === "board");
@@ -270,8 +342,12 @@ function setView(view) {
 
 function setCategoryFilter(filter) {
   state.selectedCategoryFilter = filter;
-  renderSidebarSummary();
-  renderBoard();
+  render();
+}
+
+function setBroadHeadFilter(filter) {
+  state.selectedBroadHeadFilter = filter;
+  render();
 }
 
 function changeMonth(offset) {
@@ -293,15 +369,17 @@ function openTaskModal(options = {}) {
   const {
     categoryId = CATEGORY_META[0].id,
     dueValue = "",
-    preserveValues = false,
+    broadHeadId = "",
   } = options;
 
-  if (!preserveValues) {
-    resetForm();
-    elements.taskCategoryInput.value = categoryId;
-    if (dueValue) {
-      elements.taskDueInput.value = dueValue;
-    }
+  resetTaskForm();
+  elements.taskCategoryInput.value = categoryById(categoryId).id;
+  buildBroadHeadOptions(broadHeadId || (state.selectedBroadHeadFilter !== "all" ? state.selectedBroadHeadFilter : ""));
+  if (broadHeadId) {
+    elements.taskBroadHeadInput.value = broadHeadId;
+  }
+  if (dueValue) {
+    elements.taskDueInput.value = dueValue;
   }
 
   elements.taskModalWrap.classList.add("on");
@@ -310,40 +388,66 @@ function openTaskModal(options = {}) {
 
 function closeTaskModal() {
   elements.taskModalWrap.classList.remove("on");
-  resetForm();
+  resetTaskForm();
 }
 
-function handleModalBackdrop(event) {
+function openHeadModal(headId = "") {
+  resetHeadForm();
+
+  if (headId) {
+    const head = headById(headId);
+    if (!head) {
+      return;
+    }
+    elements.headFormTitle.textContent = "Edit Broad Head";
+    elements.broadHeadIdInput.value = head.id;
+    elements.broadHeadTitleInput.value = head.title || "";
+    elements.broadHeadNotesInput.value = head.notes || "";
+    elements.deleteBroadHeadBtn.classList.remove("hidden");
+  }
+
+  elements.headModalWrap.classList.add("on");
+  window.setTimeout(() => elements.broadHeadTitleInput.focus(), 20);
+}
+
+function closeHeadModal() {
+  elements.headModalWrap.classList.remove("on");
+  resetHeadForm();
+}
+
+function handleTaskModalBackdrop(event) {
   if (event.target === elements.taskModalWrap) {
     closeTaskModal();
   }
 }
 
+function handleHeadModalBackdrop(event) {
+  if (event.target === elements.headModalWrap) {
+    closeHeadModal();
+  }
+}
+
 function handleGlobalKeydown(event) {
-  if (event.key === "Escape" && elements.taskModalWrap.classList.contains("on")) {
+  if (event.key !== "Escape") {
+    return;
+  }
+
+  if (elements.taskModalWrap.classList.contains("on")) {
     closeTaskModal();
+  }
+
+  if (elements.headModalWrap.classList.contains("on")) {
+    closeHeadModal();
   }
 }
 
 async function toggleTaskCompletion(taskId) {
-  const task = state.tasks.find((entry) => entry.id === taskId);
+  const task = taskById(taskId);
   if (!task) {
     return;
   }
 
   const nextStatus = task.status === "completed" ? "open" : "completed";
-  if (isDraftTask(task)) {
-    saveDraftTask({
-      ...task,
-      status: nextStatus,
-      completedAt: nextStatus === "completed" ? new Date().toISOString() : "",
-      updatedAt: new Date().toISOString(),
-    });
-    scheduleNotifications();
-    render();
-    updateConnectionState("configured", "Draft updated locally.");
-    return;
-  }
 
   try {
     updateConnectionState("loading", "Updating task status...");
@@ -365,31 +469,16 @@ async function toggleTaskCompletion(taskId) {
 
 async function deleteTask(taskId, options = {}) {
   const { skipConfirm = false, closeModal = false } = options;
-  const task = state.tasks.find((entry) => entry.id === taskId);
+  const task = taskById(taskId);
   if (!task) {
     return;
   }
 
   if (!skipConfirm) {
-    const prompt = isDraftTask(task)
-      ? `Delete local draft "${task.title}"?`
-      : `Delete "${task.title}"? The history entry will stay in Google Sheets.`;
-    const shouldDelete = window.confirm(prompt);
+    const shouldDelete = window.confirm(`Delete "${task.title}"?`);
     if (!shouldDelete) {
       return;
     }
-  }
-
-  if (isDraftTask(task)) {
-    removeDraftTask(taskId);
-    state.tasks = state.tasks.filter((entry) => entry.id !== taskId);
-    scheduleNotifications();
-    render();
-    updateConnectionState("configured", "Draft deleted.");
-    if (closeModal) {
-      closeTaskModal();
-    }
-    return;
   }
 
   try {
@@ -408,15 +497,16 @@ async function deleteTask(taskId, options = {}) {
 }
 
 function editTask(taskId) {
-  const task = state.tasks.find((entry) => entry.id === taskId);
+  const task = taskById(taskId);
   if (!task) {
     return;
   }
 
-  state.editingTaskId = task.id;
-  elements.formTitle.textContent = "Edit Task";
+  elements.formTitle.textContent = "Edit Subtask";
   elements.taskIdInput.value = task.id;
   elements.taskTitleInput.value = task.title || "";
+  buildBroadHeadOptions(task.broadHeadId || "");
+  elements.taskBroadHeadInput.value = task.broadHeadId || "";
   elements.taskCategoryInput.value = canonicalCategoryId(task.category);
   elements.taskDueInput.value = isoToLocalInput(task.dueAt);
   elements.taskNotesInput.value = task.notes || "";
@@ -425,21 +515,82 @@ function editTask(taskId) {
   window.setTimeout(() => elements.taskTitleInput.focus(), 20);
 }
 
-function resetForm() {
-  state.editingTaskId = "";
-  elements.formTitle.textContent = "Add Task";
+function resetTaskForm() {
+  elements.formTitle.textContent = "Add Subtask";
   elements.taskForm.reset();
   elements.taskIdInput.value = "";
   elements.taskCategoryInput.value = CATEGORY_META[0].id;
+  buildBroadHeadOptions();
   elements.deleteTaskBtn.classList.add("hidden");
 }
 
+function resetHeadForm() {
+  elements.headFormTitle.textContent = "Add Broad Head";
+  elements.headForm.reset();
+  elements.broadHeadIdInput.value = "";
+  elements.deleteBroadHeadBtn.classList.add("hidden");
+}
+
 function render() {
+  renderBroadHeadSummary();
   renderSidebarSummary();
   renderProgress();
   renderBoard();
   renderCalendar();
   renderAgenda();
+}
+
+function renderBroadHeadSummary() {
+  const relevant = state.selectedCategoryFilter === "all"
+    ? state.tasks
+    : state.tasks.filter((task) => canonicalCategoryId(task.category) === state.selectedCategoryFilter);
+
+  const rows = [
+    {
+      id: "all",
+      title: "All Broad Heads",
+      count: relevant.filter((task) => task.status !== "completed").length,
+      meta: "Everything",
+    },
+    ...state.broadHeads.map((head) => ({
+      id: head.id,
+      title: head.title,
+      count: relevant.filter((task) => task.broadHeadId === head.id && task.status !== "completed").length,
+      meta: head.notes || "Tap to focus",
+    })),
+  ];
+
+  elements.broadHeadSummaryList.innerHTML = "";
+
+  rows.forEach((row) => {
+    const item = document.createElement("div");
+    item.className = `head-item ${state.selectedBroadHeadFilter === row.id ? "on" : ""}`.trim();
+
+    const main = document.createElement("button");
+    main.className = "head-main";
+    main.type = "button";
+    main.innerHTML = `
+      <span class="head-icon"></span>
+      <span class="head-copy">
+        <span class="head-title">${escapeHtml(row.title)}</span>
+        <span class="head-meta">${escapeHtml(trimText(row.meta, 30))}</span>
+      </span>
+    `;
+    main.addEventListener("click", () => setBroadHeadFilter(row.id));
+
+    const edit = document.createElement("button");
+    edit.className = "head-edit";
+    edit.type = "button";
+    edit.textContent = row.id === "all" ? String(row.count) : "Edit";
+    if (row.id === "all") {
+      edit.disabled = true;
+    } else {
+      edit.addEventListener("click", () => openHeadModal(row.id));
+    }
+
+    item.append(main, edit);
+    elements.broadHeadSummaryList.appendChild(item);
+  });
 }
 
 function renderSidebarSummary() {
@@ -448,20 +599,21 @@ function renderSidebarSummary() {
       id: "all",
       label: "All Tasks",
       accent: "#9898a8",
-      count: state.tasks.filter((task) => task.status !== "completed").length,
+      count: getVisibleTasks().filter((task) => task.status !== "completed").length,
     },
     ...CATEGORY_META.map((category) => ({
       id: category.id,
       label: category.label,
       accent: category.accent,
-      count: state.tasks.filter((task) => canonicalCategoryId(task.category) === category.id && task.status !== "completed").length,
+      count: getVisibleTasks({ categoryOverride: category.id }).filter((task) => task.status !== "completed").length,
     })),
   ];
 
   elements.categorySummaryList.innerHTML = "";
+
   rows.forEach((row) => {
     const item = document.createElement("div");
-    item.className = `cat ${state.selectedCategoryFilter === row.id ? "on" : ""}`;
+    item.className = `cat ${state.selectedCategoryFilter === row.id ? "on" : ""}`.trim();
     item.innerHTML = `
       <span class="cdot" style="background:${row.accent}"></span>
       <span class="cname">${row.label}</span>
@@ -473,14 +625,14 @@ function renderSidebarSummary() {
 }
 
 function renderProgress() {
-  const total = state.tasks.length;
-  const completed = state.tasks.filter((task) => task.status === "completed").length;
+  const visibleTasks = getVisibleTasks();
+  const total = visibleTasks.length;
+  const completed = visibleTasks.filter((task) => task.status === "completed").length;
   const percent = total ? Math.round((completed / total) * 100) : 0;
 
   elements.progressCount.textContent = `${completed}/${total}`;
   elements.progressBarFill.style.width = `${percent}%`;
 }
-
 function renderBoard() {
   elements.boardView.innerHTML = "";
 
@@ -492,7 +644,8 @@ function renderBoard() {
   grid.className = `grid ${categories.length === 1 ? "single-column" : ""}`.trim();
 
   categories.forEach((category) => {
-    const tasks = sortTasks(state.tasks.filter((task) => canonicalCategoryId(task.category) === category.id));
+    const tasks = getVisibleTasks({ categoryOverride: category.id });
+    const groups = buildTaskGroups(tasks);
     const openCount = tasks.filter((task) => task.status !== "completed").length;
 
     const column = document.createElement("article");
@@ -517,14 +670,19 @@ function renderBoard() {
     if (!tasks.length) {
       list.innerHTML = `<div class="empty-state">Nothing here</div>`;
     } else {
-      tasks.forEach((task) => list.appendChild(renderTaskRow(task, category)));
+      groups.forEach((group) => {
+        list.appendChild(renderTaskGroup(group, category.id));
+      });
     }
 
     const addButton = document.createElement("button");
     addButton.className = "col-add";
     addButton.type = "button";
-    addButton.textContent = "+ Add task";
-    addButton.addEventListener("click", () => openTaskModal({ categoryId: category.id }));
+    addButton.textContent = "+ Add subtask";
+    addButton.addEventListener("click", () => openTaskModal({
+      categoryId: category.id,
+      broadHeadId: state.selectedBroadHeadFilter !== "all" ? state.selectedBroadHeadFilter : "",
+    }));
 
     body.append(list, addButton);
     column.appendChild(body);
@@ -534,7 +692,38 @@ function renderBoard() {
   elements.boardView.appendChild(grid);
 }
 
-function renderTaskRow(task, category) {
+function renderTaskGroup(group, categoryId) {
+  const wrap = document.createElement("section");
+  wrap.className = "task-group";
+
+  const head = document.createElement("div");
+  head.className = "task-group-head";
+  head.innerHTML = `
+    <div class="task-group-title">${escapeHtml(group.title)}</div>
+    <div class="task-group-meta">${group.tasks.filter((task) => task.status !== "completed").length} open</div>
+  `;
+
+  const addButton = document.createElement("button");
+  addButton.className = "task-group-add";
+  addButton.type = "button";
+  addButton.textContent = "+ Add";
+  addButton.addEventListener("click", () => openTaskModal({
+    categoryId,
+    broadHeadId: group.id === "ungrouped" ? "" : group.id,
+  }));
+
+  head.appendChild(addButton);
+  wrap.appendChild(head);
+
+  group.tasks.forEach((task) => {
+    wrap.appendChild(renderTaskRow(task, { showHeadBadge: false }));
+  });
+
+  return wrap;
+}
+
+function renderTaskRow(task, options = {}) {
+  const { showHeadBadge = true } = options;
   const row = document.createElement("div");
   row.className = `task ${task.status === "completed" ? "done" : ""}`.trim();
 
@@ -555,11 +744,20 @@ function renderTaskRow(task, category) {
   const title = document.createElement("div");
   title.className = "task-title";
   title.textContent = task.title || "Untitled task";
-  if (isDraftTask(task)) {
-    title.textContent = `${title.textContent} · local draft`;
-  }
 
-  trigger.appendChild(title);
+  const meta = document.createElement("div");
+  meta.className = "task-meta";
+  const parts = [];
+  if (showHeadBadge && task.broadHeadTitle) {
+    parts.push(`<span class="task-head-badge">${escapeHtml(task.broadHeadTitle)}</span>`);
+  }
+  parts.push(escapeHtml(formatDueLabel(task.dueAt)));
+  if (task.notes) {
+    parts.push(escapeHtml(trimText(task.notes, 48)));
+  }
+  meta.innerHTML = parts.join(" ");
+
+  trigger.append(title, meta);
   row.append(checkbox, trigger);
   return row;
 }
@@ -603,9 +801,6 @@ function renderCalendar() {
       state.selectedDateKey = key;
       renderCalendar();
       renderAgenda();
-      if (day.inCurrentMonth) {
-        openTaskModal({ dueValue: isoForSelectedDay(day.date) });
-      }
     });
 
     elements.calendarGrid.appendChild(cell);
@@ -629,10 +824,9 @@ function renderAgenda() {
   }
 
   dayTasks.forEach((task) => {
-    elements.agendaList.appendChild(renderTaskRow(task, categoryById(task.category)));
+    elements.agendaList.appendChild(renderTaskRow(task, { showHeadBadge: true }));
   });
 }
-
 async function enableNotifications() {
   if (!("Notification" in window)) {
     elements.notificationStatus.textContent = "This browser does not support notifications.";
@@ -706,6 +900,7 @@ async function apiRequest(action, payload = {}) {
     },
     body: JSON.stringify({ action, ...payload }),
   });
+
   return handleApiResponse(response);
 }
 
@@ -719,6 +914,7 @@ async function handleApiResponse(response) {
   if (!data.ok) {
     throw new Error(data.error || "Unknown API error");
   }
+
   return data;
 }
 
@@ -741,14 +937,30 @@ function showStatusToast(kind, message) {
 }
 
 function upsertTaskInState(task) {
-  const index = state.tasks.findIndex((entry) => entry.id === task.id);
+  const normalized = normalizeTaskRecord(task, state.broadHeads);
+  const index = state.tasks.findIndex((entry) => entry.id === normalized.id);
   if (index === -1) {
-    state.tasks.push(task);
+    state.tasks.push(normalized);
   } else {
-    state.tasks[index] = task;
+    state.tasks[index] = normalized;
   }
-  persistDraftTasks();
   state.tasks = sortTasks(state.tasks);
+}
+
+function upsertBroadHeadInState(head) {
+  const normalized = normalizeBroadHeadRecord(head);
+  const index = state.broadHeads.findIndex((entry) => entry.id === normalized.id);
+  if (index === -1) {
+    state.broadHeads.push(normalized);
+  } else {
+    state.broadHeads[index] = normalized;
+  }
+  state.broadHeads = sortBroadHeads(state.broadHeads);
+  state.tasks = state.tasks.map((task) => (
+    task.broadHeadId === normalized.id
+      ? { ...task, broadHeadTitle: normalized.title }
+      : task
+  ));
 }
 
 function buildCalendarDays(monthDate) {
@@ -779,6 +991,82 @@ function groupTasksByDay(tasks) {
   return map;
 }
 
+function buildTaskGroups(tasks) {
+  const grouped = new Map();
+
+  tasks.forEach((task) => {
+    const id = task.broadHeadId || "ungrouped";
+    const title = task.broadHeadTitle || "Without Broad Head";
+    const bucket = grouped.get(id) || { id, title, tasks: [] };
+    bucket.tasks.push(task);
+    grouped.set(id, bucket);
+  });
+
+  return [...grouped.values()]
+    .map((group) => ({
+      ...group,
+      tasks: sortTasks(group.tasks),
+    }))
+    .sort((left, right) => {
+      if (left.id === "ungrouped") {
+        return 1;
+      }
+      if (right.id === "ungrouped") {
+        return -1;
+      }
+      return left.title.localeCompare(right.title);
+    });
+}
+
+function getVisibleTasks(options = {}) {
+  const { categoryOverride = null, broadHeadOverride = null } = options;
+  const activeCategory = categoryOverride || state.selectedCategoryFilter;
+  const activeBroadHead = broadHeadOverride || state.selectedBroadHeadFilter;
+
+  return state.tasks.filter((task) => {
+    if (activeCategory !== "all" && canonicalCategoryId(task.category) !== activeCategory) {
+      return false;
+    }
+    if (activeBroadHead !== "all" && task.broadHeadId !== activeBroadHead) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function normalizeActiveFilters() {
+  if (state.selectedBroadHeadFilter !== "all" && !headById(state.selectedBroadHeadFilter)) {
+    state.selectedBroadHeadFilter = "all";
+  }
+}
+function normalizeTaskRecord(task, broadHeads) {
+  const broadHeadId = String(task?.broadHeadId || "").trim();
+  const linkedHead = broadHeads.find((head) => head.id === broadHeadId);
+  return {
+    id: String(task?.id || "").trim(),
+    title: String(task?.title || "").trim(),
+    notes: String(task?.notes || "").trim(),
+    category: String(task?.category || CATEGORY_META[0].label).trim(),
+    broadHeadId,
+    broadHeadTitle: String(linkedHead?.title || task?.broadHeadTitle || "").trim(),
+    status: task?.status === "completed" ? "completed" : "open",
+    dueAt: String(task?.dueAt || "").trim(),
+    createdAt: String(task?.createdAt || "").trim(),
+    updatedAt: String(task?.updatedAt || "").trim(),
+    completedAt: String(task?.completedAt || "").trim(),
+  };
+}
+
+function normalizeBroadHeadRecord(head) {
+  return {
+    id: String(head?.id || "").trim(),
+    title: String(head?.title || "").trim(),
+    notes: String(head?.notes || "").trim(),
+    createdAt: String(head?.createdAt || "").trim(),
+    updatedAt: String(head?.updatedAt || "").trim(),
+  };
+}
+
 function sortTasks(tasks) {
   return [...tasks].sort((left, right) => {
     if (left.status !== right.status) {
@@ -788,8 +1076,20 @@ function sortTasks(tasks) {
   });
 }
 
+function sortBroadHeads(heads) {
+  return [...heads].sort((left, right) => left.title.localeCompare(right.title));
+}
+
+function headById(headId) {
+  return state.broadHeads.find((head) => head.id === headId) || null;
+}
+
+function taskById(taskId) {
+  return state.tasks.find((task) => task.id === taskId) || null;
+}
+
 function categoryById(categoryId) {
-  return CATEGORY_META.find((category) => category.id === canonicalCategoryId(categoryId)) || CATEGORY_META[0];
+  return CATEGORY_META.find((category) => canonicalCategoryId(categoryId) === category.id) || CATEGORY_META[0];
 }
 
 function canonicalCategoryId(value) {
@@ -800,36 +1100,6 @@ function canonicalCategoryId(value) {
     || category.optionLabel.toLowerCase() === input
   ));
   return match?.id || CATEGORY_META[0].id;
-}
-
-function isDraftTask(task) {
-  return Boolean(task?.localOnly) || String(task?.id || "").startsWith("draft-");
-}
-
-function createDraftId() {
-  return `draft-${Date.now()}`;
-}
-
-function loadDraftTasks() {
-  const drafts = safeParse(localStorage.getItem(DRAFT_TASKS_KEY), []);
-  return Array.isArray(drafts) ? drafts.filter(isDraftTask) : [];
-}
-
-function persistDraftTasks() {
-  const drafts = state.tasks.filter(isDraftTask);
-  localStorage.setItem(DRAFT_TASKS_KEY, JSON.stringify(drafts));
-}
-
-function saveDraftTask(task) {
-  upsertTaskInState({
-    ...task,
-    localOnly: true,
-  });
-}
-
-function removeDraftTask(taskId) {
-  const remaining = state.tasks.filter((task) => task.id !== taskId);
-  localStorage.setItem(DRAFT_TASKS_KEY, JSON.stringify(remaining.filter(isDraftTask)));
 }
 
 function localInputToIso(value) {
@@ -851,12 +1121,6 @@ function isoToLocalInput(value) {
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
-function isoForSelectedDay(date) {
-  const value = new Date(date);
-  value.setHours(9, 0, 0, 0);
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}T09:00`;
-}
-
 function startOfMonth(date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
@@ -868,6 +1132,28 @@ function dateKey(date) {
 function parseDateKey(value) {
   const [year, month, day] = value.split("-").map((part) => Number(part));
   return new Date(year, month - 1, day);
+}
+
+function formatDueLabel(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return "No due time";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function trimText(value, maxLength) {
+  const text = String(value || "").trim();
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength - 1)}...`;
 }
 
 function safeParse(value, fallback) {

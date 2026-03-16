@@ -6,6 +6,8 @@ const TASK_HEADERS = [
   "title",
   "notes",
   "category",
+  "broadHeadId",
+  "broadHeadTitle",
   "status",
   "dueAt",
   "createdAt",
@@ -13,18 +15,29 @@ const TASK_HEADERS = [
   "completedAt",
 ];
 
+const BROAD_HEAD_HEADERS = [
+  "id",
+  "title",
+  "notes",
+  "createdAt",
+  "updatedAt",
+];
+
 const HISTORY_HEADERS = [
   "timestamp",
-  "taskId",
+  "entityType",
+  "entityId",
   "action",
   "title",
   "category",
+  "broadHeadTitle",
   "status",
   "dueAt",
   "payload",
 ];
 
 const TASK_SHEET = "Tasks";
+const BROAD_HEAD_SHEET = "Broad Heads";
 const HISTORY_SHEET = "History";
 
 exports.handler = async (event) => {
@@ -44,8 +57,12 @@ exports.handler = async (event) => {
         return response(400, { ok: false, error: "Unsupported action." }, headers);
       }
 
-      const tasks = await listTasks(sheets, config.spreadsheetId);
-      return response(200, { ok: true, tasks }, headers);
+      const [tasks, broadHeads] = await Promise.all([
+        listTasks(sheets, config.spreadsheetId),
+        listBroadHeads(sheets, config.spreadsheetId),
+      ]);
+
+      return response(200, { ok: true, tasks, broadHeads }, headers);
     }
 
     if (event.httpMethod !== "POST") {
@@ -53,6 +70,7 @@ exports.handler = async (event) => {
     }
 
     const payload = JSON.parse(event.body || "{}");
+
     if (payload.action === "save") {
       const task = await saveTask(sheets, config.spreadsheetId, payload.task || {});
       return response(200, { ok: true, task }, headers);
@@ -60,6 +78,16 @@ exports.handler = async (event) => {
 
     if (payload.action === "delete") {
       await deleteTask(sheets, config.spreadsheetId, metadata, payload.id);
+      return response(200, { ok: true }, headers);
+    }
+
+    if (payload.action === "saveHead") {
+      const broadHead = await saveBroadHead(sheets, config.spreadsheetId, payload.head || {});
+      return response(200, { ok: true, broadHead }, headers);
+    }
+
+    if (payload.action === "deleteHead") {
+      await deleteBroadHead(sheets, config.spreadsheetId, metadata, payload.id);
       return response(200, { ok: true }, headers);
     }
 
@@ -118,6 +146,10 @@ async function ensureSheetsStructure(sheets, spreadsheetId) {
     requests.push({ addSheet: { properties: { title: TASK_SHEET } } });
   }
 
+  if (!titles.has(BROAD_HEAD_SHEET)) {
+    requests.push({ addSheet: { properties: { title: BROAD_HEAD_SHEET } } });
+  }
+
   if (!titles.has(HISTORY_SHEET)) {
     requests.push({ addSheet: { properties: { title: HISTORY_SHEET } } });
   }
@@ -139,11 +171,12 @@ async function ensureSheetsStructure(sheets, spreadsheetId) {
   );
 
   await ensureSheetSchema(sheets, spreadsheetId, TASK_SHEET, TASK_HEADERS);
+  await ensureSheetSchema(sheets, spreadsheetId, BROAD_HEAD_SHEET, BROAD_HEAD_HEADERS);
   await ensureSheetSchema(sheets, spreadsheetId, HISTORY_SHEET, HISTORY_HEADERS);
 
   return {
     taskSheetId: sheetMap.get(TASK_SHEET),
-    historySheetId: sheetMap.get(HISTORY_SHEET),
+    broadHeadSheetId: sheetMap.get(BROAD_HEAD_SHEET),
   };
 }
 
@@ -200,6 +233,11 @@ async function listTasks(sheets, spreadsheetId) {
   return rows.map((row) => row.task);
 }
 
+async function listBroadHeads(sheets, spreadsheetId) {
+  const rows = await getBroadHeadRows(sheets, spreadsheetId);
+  return rows.map((row) => row.broadHead);
+}
+
 async function getTaskRows(sheets, spreadsheetId) {
   const result = await sheets.spreadsheets.values.get({
     spreadsheetId,
@@ -208,21 +246,47 @@ async function getTaskRows(sheets, spreadsheetId) {
 
   const values = result.data.values || [];
   const headers = values[0] || TASK_HEADERS;
+
   return values
     .slice(1)
     .map((row, index) => ({
       rowNumber: index + 2,
-      task: rowToTask(row, headers),
+      task: rowToRecord(row, headers),
     }))
     .filter((entry) => entry.task.id);
 }
 
+async function getBroadHeadRows(sheets, spreadsheetId) {
+  const result = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${BROAD_HEAD_SHEET}!A:Z`,
+  });
+
+  const values = result.data.values || [];
+  const headers = values[0] || BROAD_HEAD_HEADERS;
+
+  return values
+    .slice(1)
+    .map((row, index) => ({
+      rowNumber: index + 2,
+      broadHead: rowToRecord(row, headers),
+    }))
+    .filter((entry) => entry.broadHead.id);
+}
+
 async function saveTask(sheets, spreadsheetId, input) {
-  const existingRows = await getTaskRows(sheets, spreadsheetId);
+  const [existingRows, broadHeadRows] = await Promise.all([
+    getTaskRows(sheets, spreadsheetId),
+    getBroadHeadRows(sheets, spreadsheetId),
+  ]);
+
   const current = existingRows.find((entry) => entry.task.id === input.id)?.task;
+  const broadHeadMap = new Map(
+    broadHeadRows.map((entry) => [entry.broadHead.id, entry.broadHead])
+  );
   const now = new Date().toISOString();
-  const task = normalizeTask(input, current, now);
-  const rowValues = taskToRow(task);
+  const task = normalizeTask(input, current, now, broadHeadMap);
+  const rowValues = recordToRow(task, TASK_HEADERS);
   const existingRow = existingRows.find((entry) => entry.task.id === task.id);
 
   if (existingRow) {
@@ -234,7 +298,7 @@ async function saveTask(sheets, spreadsheetId, input) {
         values: [rowValues],
       },
     });
-    await appendHistory(sheets, spreadsheetId, "updated", task);
+    await appendHistory(sheets, spreadsheetId, "task", "updated", task);
     return task;
   }
 
@@ -247,8 +311,42 @@ async function saveTask(sheets, spreadsheetId, input) {
       values: [rowValues],
     },
   });
-  await appendHistory(sheets, spreadsheetId, "created", task);
+  await appendHistory(sheets, spreadsheetId, "task", "created", task);
   return task;
+}
+
+async function saveBroadHead(sheets, spreadsheetId, input) {
+  const existingRows = await getBroadHeadRows(sheets, spreadsheetId);
+  const current = existingRows.find((entry) => entry.broadHead.id === input.id)?.broadHead;
+  const now = new Date().toISOString();
+  const broadHead = normalizeBroadHead(input, current, now);
+  const rowValues = recordToRow(broadHead, BROAD_HEAD_HEADERS);
+  const existingRow = existingRows.find((entry) => entry.broadHead.id === broadHead.id);
+
+  if (existingRow) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${BROAD_HEAD_SHEET}!A${existingRow.rowNumber}:${columnLetter(BROAD_HEAD_HEADERS.length)}${existingRow.rowNumber}`,
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [rowValues],
+      },
+    });
+    await appendHistory(sheets, spreadsheetId, "broad_head", "updated", broadHead);
+    return broadHead;
+  }
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: `${BROAD_HEAD_SHEET}!A:${columnLetter(BROAD_HEAD_HEADERS.length)}`,
+    valueInputOption: "RAW",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: {
+      values: [rowValues],
+    },
+  });
+  await appendHistory(sheets, spreadsheetId, "broad_head", "created", broadHead);
+  return broadHead;
 }
 
 async function deleteTask(sheets, spreadsheetId, metadata, taskId) {
@@ -280,10 +378,51 @@ async function deleteTask(sheets, spreadsheetId, metadata, taskId) {
     },
   });
 
-  await appendHistory(sheets, spreadsheetId, "deleted", match.task);
+  await appendHistory(sheets, spreadsheetId, "task", "deleted", match.task);
 }
 
-async function appendHistory(sheets, spreadsheetId, action, task) {
+async function deleteBroadHead(sheets, spreadsheetId, metadata, broadHeadId) {
+  if (!broadHeadId) {
+    throw new Error("Broad head id is required.");
+  }
+
+  const [headRows, taskRows] = await Promise.all([
+    getBroadHeadRows(sheets, spreadsheetId),
+    getTaskRows(sheets, spreadsheetId),
+  ]);
+
+  const match = headRows.find((entry) => entry.broadHead.id === broadHeadId);
+  if (!match) {
+    throw new Error("Broad head not found.");
+  }
+
+  const hasTasks = taskRows.some((entry) => entry.task.broadHeadId === broadHeadId);
+  if (hasTasks) {
+    throw new Error("This broad head still has tasks. Reassign or delete those tasks first.");
+  }
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          deleteDimension: {
+            range: {
+              sheetId: metadata.broadHeadSheetId,
+              dimension: "ROWS",
+              startIndex: match.rowNumber - 1,
+              endIndex: match.rowNumber,
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  await appendHistory(sheets, spreadsheetId, "broad_head", "deleted", match.broadHead);
+}
+
+async function appendHistory(sheets, spreadsheetId, entityType, action, item) {
   await sheets.spreadsheets.values.append({
     spreadsheetId,
     range: `${HISTORY_SHEET}!A:${columnLetter(HISTORY_HEADERS.length)}`,
@@ -292,19 +431,21 @@ async function appendHistory(sheets, spreadsheetId, action, task) {
     requestBody: {
       values: [[
         new Date().toISOString(),
-        task.id || "",
+        entityType,
+        item.id || "",
         action,
-        task.title || "",
-        task.category || "",
-        task.status || "",
-        task.dueAt || "",
-        JSON.stringify(task),
+        item.title || "",
+        item.category || "",
+        item.broadHeadTitle || "",
+        item.status || "",
+        item.dueAt || "",
+        JSON.stringify(item),
       ]],
     },
   });
 }
 
-function normalizeTask(input, current, now) {
+function normalizeTask(input, current, now, broadHeadMap) {
   if (!input.title) {
     throw new Error("Task title is required.");
   }
@@ -318,11 +459,22 @@ function normalizeTask(input, current, now) {
   }
 
   const status = input.status === "completed" ? "completed" : "open";
+  const broadHeadId = String(input.broadHeadId || current?.broadHeadId || "").trim();
+  const broadHeadTitle = broadHeadId
+    ? String(broadHeadMap.get(broadHeadId)?.title || input.broadHeadTitle || current?.broadHeadTitle || "").trim()
+    : "";
+
+  if (broadHeadId && !broadHeadTitle) {
+    throw new Error("Broad head not found.");
+  }
+
   return {
     id: input.id || current?.id || crypto.randomUUID(),
     title: String(input.title).trim(),
     notes: String(input.notes || "").trim(),
     category: String(input.category).trim(),
+    broadHeadId,
+    broadHeadTitle,
     status,
     dueAt: String(input.dueAt).trim(),
     createdAt: input.createdAt || current?.createdAt || now,
@@ -331,16 +483,30 @@ function normalizeTask(input, current, now) {
   };
 }
 
-function taskToRow(task) {
-  return TASK_HEADERS.map((header) => task[header] || "");
+function normalizeBroadHead(input, current, now) {
+  if (!input.title) {
+    throw new Error("Broad head title is required.");
+  }
+
+  return {
+    id: input.id || current?.id || crypto.randomUUID(),
+    title: String(input.title).trim(),
+    notes: String(input.notes || "").trim(),
+    createdAt: input.createdAt || current?.createdAt || now,
+    updatedAt: now,
+  };
 }
 
-function rowToTask(row, headers = TASK_HEADERS) {
-  const task = {};
+function recordToRow(record, headers) {
+  return headers.map((header) => record[header] || "");
+}
+
+function rowToRecord(row, headers) {
+  const record = {};
   headers.forEach((header, index) => {
-    task[header] = row[index] || "";
+    record[header] = row[index] || "";
   });
-  return task;
+  return record;
 }
 
 function columnLetter(index) {

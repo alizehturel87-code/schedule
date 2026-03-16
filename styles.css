@@ -156,6 +156,14 @@ button {
   gap: 6px;
 }
 
+.head-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.head-item,
 .cat {
   display: flex;
   align-items: center;
@@ -166,8 +174,64 @@ button {
   cursor: pointer;
 }
 
+.head-item {
+  padding: 8px 10px;
+  justify-content: space-between;
+}
+
+.head-item.on,
 .cat.on {
   background: var(--surface3);
+}
+
+.head-main,
+.head-edit {
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.head-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.head-icon {
+  width: 11px;
+  height: 11px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(255, 179, 71, 0.95), rgba(95, 162, 255, 0.95));
+}
+
+.head-copy {
+  min-width: 0;
+}
+
+.head-title {
+  display: block;
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.head-meta {
+  display: block;
+  margin-top: 2px;
+  color: var(--text3);
+  font-size: 10px;
+}
+
+.head-edit {
+  color: var(--text3);
+  font-size: 10px;
+  padding: 4px 0 4px 10px;
 }
 
 .cdot {
@@ -234,6 +298,11 @@ button {
   border: 1px dashed var(--border2);
   background: transparent;
   color: var(--text2);
+}
+
+.secondary-add {
+  margin-top: 0;
+  margin-bottom: 18px;
 }
 
 .board-area {
@@ -305,6 +374,39 @@ button {
   gap: 6px;
 }
 
+.task-group + .task-group {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.task-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.task-group-title {
+  font-family: "Syne", sans-serif;
+  font-size: 0.92rem;
+}
+
+.task-group-meta {
+  color: var(--text3);
+  font-size: 10px;
+}
+
+.task-group-add {
+  margin-left: auto;
+  padding: 6px 9px;
+  border-radius: 9px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--text2);
+  font-size: 10px;
+}
+
 .task {
   display: flex;
   align-items: center;
@@ -337,6 +439,22 @@ button {
 .task-title {
   font-size: 12px;
   line-height: 1.4;
+}
+
+.task-meta {
+  margin-top: 3px;
+  color: var(--text3);
+  font-size: 10px;
+}
+
+.task-head-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 179, 71, 0.14);
+  color: var(--amber);
 }
 
 .chk {

@@ -29,6 +29,10 @@
 
     <div class="dashboard">
       <aside class="sidebar">
+        <div class="slabel">Broad Heads</div>
+        <div id="broadHeadSummaryList" class="head-summary"></div>
+        <button id="sidebarAddHeadBtn" class="add-btn secondary-add" type="button">+ Add broad head</button>
+
         <div class="slabel">Categories</div>
         <div id="categorySummaryList" class="category-summary"></div>
 
@@ -102,8 +106,13 @@
         <input id="taskIdInput" type="hidden">
 
         <div class="mfield">
-          <label for="taskTitleInput">Task name</label>
-          <input id="taskTitleInput" type="text" maxlength="120" placeholder="What needs to be done?" required>
+          <label for="taskTitleInput">Subtask</label>
+          <input id="taskTitleInput" type="text" maxlength="120" placeholder="What needs to be done next?" required>
+        </div>
+
+        <div class="mfield">
+          <label for="taskBroadHeadInput">Broad head</label>
+          <select id="taskBroadHeadInput"></select>
         </div>
 
         <div class="mfield">
@@ -124,6 +133,34 @@
         <div class="mactions">
           <button id="deleteTaskBtn" class="mcancel hidden" type="button">Delete</button>
           <button id="saveTaskBtn" class="mbtn" type="submit">Save task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="headModalWrap" class="modal-wrap">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="headFormTitle">Add Broad Head</h3>
+        <button id="clearHeadFormBtn" class="mcancel" type="button">Cancel</button>
+      </div>
+
+      <form id="headForm" class="task-form">
+        <input id="broadHeadIdInput" type="hidden">
+
+        <div class="mfield">
+          <label for="broadHeadTitleInput">Broad head</label>
+          <input id="broadHeadTitleInput" type="text" maxlength="120" placeholder="Curriculum Design" required>
+        </div>
+
+        <div class="mfield">
+          <label for="broadHeadNotesInput">Notes</label>
+          <textarea id="broadHeadNotesInput" rows="3" placeholder="Optional context for this head"></textarea>
+        </div>
+
+        <div class="mactions">
+          <button id="deleteBroadHeadBtn" class="mcancel hidden" type="button">Delete</button>
+          <button id="saveBroadHeadBtn" class="mbtn" type="submit">Save broad head</button>
         </div>
       </form>
     </div>
