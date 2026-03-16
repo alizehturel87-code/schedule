@@ -629,11 +629,12 @@ async function apiRequest(action, payload = {}) {
 }
 
 async function handleApiResponse(response) {
+  const data = await response.json().catch(() => null);
+
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+    throw new Error(data?.error || `HTTP ${response.status}`);
   }
 
-  const data = await response.json();
   if (!data.ok) {
     throw new Error(data.error || "Unknown API error");
   }
