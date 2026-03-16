@@ -1,10 +1,19 @@
 const CATEGORY_META = [
   {
+    id: "needs_priority",
+    label: "Needs Priority",
+    optionLabel: "List now, prioritize later",
+    shortLabel: "Local only",
+    accent: "#8f90a6",
+    syncsToSheets: false,
+  },
+  {
     id: "ultra_12",
     label: "Ultra Important",
     optionLabel: "Ultra important to be completed in next 12 hrs",
     shortLabel: "Next 12 hrs",
     accent: "#ff4d62",
+    syncsToSheets: true,
   },
   {
     id: "important_24",
@@ -12,6 +21,7 @@ const CATEGORY_META = [
     optionLabel: "Important to be done in next 24 hrs",
     shortLabel: "Next 24 hrs",
     accent: "#ffb347",
+    syncsToSheets: true,
   },
   {
     id: "weekend",
@@ -19,6 +29,7 @@ const CATEGORY_META = [
     optionLabel: "Weekend Tasks",
     shortLabel: "This weekend",
     accent: "#5fa2ff",
+    syncsToSheets: true,
   },
   {
     id: "meetings_events",
@@ -26,6 +37,7 @@ const CATEGORY_META = [
     optionLabel: "Meetings and events to reach on time",
     shortLabel: "On time",
     accent: "#c487ff",
+    syncsToSheets: true,
   },
   {
     id: "leisure",
@@ -33,10 +45,12 @@ const CATEGORY_META = [
     optionLabel: "Do it at your leisure",
     shortLabel: "Whenever",
     accent: "#59dda0",
+    syncsToSheets: true,
   },
 ];
 
 const SETTINGS_KEY = "orbit_tasks_settings_v1";
+const DRAFT_TASKS_KEY = "orbit_tasks_drafts_v1";
 const REMINDER_LOG_KEY = "orbit_tasks_reminders_v1";
 const API_ENDPOINT = "/.netlify/functions/tasks";
 
@@ -147,8 +161,11 @@ async function syncTasks() {
 
   try {
     const response = await apiRequest("list");
-    state.tasks = sortTasks(response.tasks || []);
-    updateConnectionState("connected", `${state.tasks.length} tasks loaded from Google Sheets.`);
+    const remoteTasks = response.tasks || [];
+    const draftTasks = loadDraftTasks();
+    state.tasks = sortTasks([...remoteTasks, ...draftTasks]);
+    const draftSuffix = draftTasks.length ? ` ${draftTasks.length} local drafts still need priority.` : "";
+    updateConnectionState("connected", `${remoteTasks.length} tasks loaded from Google Sheets.${draftSuffix}`);
     scheduleNotifications();
     render();
   } catch (error) {
@@ -172,6 +189,7 @@ async function handleTaskSubmit(event) {
     dueAt: localInputToIso(elements.taskDueInput.value),
     status: "open",
   };
+  const selectedCategory = categoryById(elements.taskCategoryInput.value);
 
   if (!payload.title || !payload.dueAt) {
     updateConnectionState("error", "Task title and due time are required.");
@@ -179,6 +197,11 @@ async function handleTaskSubmit(event) {
   }
 
   const existingTask = state.tasks.find((task) => task.id === payload.id);
+  if (existingTask && !isDraftTask(existingTask) && !selectedCategory.syncsToSheets) {
+    updateConnectionState("error", "Tasks already in Google Sheets must keep a real priority.");
+    return;
+  }
+
   if (existingTask) {
     payload.createdAt = existingTask.createdAt || "";
     if (existingTask.status === "completed") {
@@ -187,10 +210,38 @@ async function handleTaskSubmit(event) {
     }
   }
 
+  if (!selectedCategory.syncsToSheets) {
+    saveDraftTask({
+      id: isDraftTask(existingTask) ? existingTask.id : createDraftId(),
+      title: payload.title,
+      notes: payload.notes,
+      category: selectedCategory.label,
+      dueAt: payload.dueAt,
+      status: payload.status,
+      createdAt: existingTask?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      completedAt: payload.completedAt || "",
+      localOnly: true,
+    });
+    closeTaskModal();
+    scheduleNotifications();
+    render();
+    updateConnectionState("configured", "Task saved locally. It will sync after you assign a priority.");
+    return;
+  }
+
   updateConnectionState("loading", payload.id ? "Updating task..." : "Saving task...");
 
   try {
+    const draftId = isDraftTask(existingTask) ? existingTask.id : "";
+    if (draftId) {
+      payload.id = "";
+    }
     const response = await apiRequest("save", { task: payload });
+    if (draftId) {
+      removeDraftTask(draftId);
+      state.tasks = state.tasks.filter((task) => task.id !== draftId);
+    }
     upsertTaskInState(response.task);
     closeTaskModal();
     scheduleNotifications();
@@ -281,6 +332,18 @@ async function toggleTaskCompletion(taskId) {
   }
 
   const nextStatus = task.status === "completed" ? "open" : "completed";
+  if (isDraftTask(task)) {
+    saveDraftTask({
+      ...task,
+      status: nextStatus,
+      completedAt: nextStatus === "completed" ? new Date().toISOString() : "",
+      updatedAt: new Date().toISOString(),
+    });
+    scheduleNotifications();
+    render();
+    updateConnectionState("configured", "Draft updated locally.");
+    return;
+  }
 
   try {
     updateConnectionState("loading", "Updating task status...");
@@ -308,10 +371,25 @@ async function deleteTask(taskId, options = {}) {
   }
 
   if (!skipConfirm) {
-    const shouldDelete = window.confirm(`Delete "${task.title}"? The history entry will stay in Google Sheets.`);
+    const prompt = isDraftTask(task)
+      ? `Delete local draft "${task.title}"?`
+      : `Delete "${task.title}"? The history entry will stay in Google Sheets.`;
+    const shouldDelete = window.confirm(prompt);
     if (!shouldDelete) {
       return;
     }
+  }
+
+  if (isDraftTask(task)) {
+    removeDraftTask(taskId);
+    state.tasks = state.tasks.filter((entry) => entry.id !== taskId);
+    scheduleNotifications();
+    render();
+    updateConnectionState("configured", "Draft deleted.");
+    if (closeModal) {
+      closeTaskModal();
+    }
+    return;
   }
 
   try {
@@ -477,6 +555,9 @@ function renderTaskRow(task, category) {
   const title = document.createElement("div");
   title.className = "task-title";
   title.textContent = task.title || "Untitled task";
+  if (isDraftTask(task)) {
+    title.textContent = `${title.textContent} · local draft`;
+  }
 
   trigger.appendChild(title);
   row.append(checkbox, trigger);
@@ -666,6 +747,7 @@ function upsertTaskInState(task) {
   } else {
     state.tasks[index] = task;
   }
+  persistDraftTasks();
   state.tasks = sortTasks(state.tasks);
 }
 
@@ -718,6 +800,36 @@ function canonicalCategoryId(value) {
     || category.optionLabel.toLowerCase() === input
   ));
   return match?.id || CATEGORY_META[0].id;
+}
+
+function isDraftTask(task) {
+  return Boolean(task?.localOnly) || String(task?.id || "").startsWith("draft-");
+}
+
+function createDraftId() {
+  return `draft-${Date.now()}`;
+}
+
+function loadDraftTasks() {
+  const drafts = safeParse(localStorage.getItem(DRAFT_TASKS_KEY), []);
+  return Array.isArray(drafts) ? drafts.filter(isDraftTask) : [];
+}
+
+function persistDraftTasks() {
+  const drafts = state.tasks.filter(isDraftTask);
+  localStorage.setItem(DRAFT_TASKS_KEY, JSON.stringify(drafts));
+}
+
+function saveDraftTask(task) {
+  upsertTaskInState({
+    ...task,
+    localOnly: true,
+  });
+}
+
+function removeDraftTask(taskId) {
+  const remaining = state.tasks.filter((task) => task.id !== taskId);
+  localStorage.setItem(DRAFT_TASKS_KEY, JSON.stringify(remaining.filter(isDraftTask)));
 }
 
 function localInputToIso(value) {
