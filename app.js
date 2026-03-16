@@ -51,6 +51,7 @@ const state = {
 };
 
 const reminderTimers = new Map();
+let statusToastTimer = 0;
 
 const elements = {
   profileNameInput: document.getElementById("profileNameInput"),
@@ -59,6 +60,7 @@ const elements = {
   connectionStatus: document.getElementById("connectionStatus"),
   connectionDot: document.getElementById("connectionDot"),
   notificationStatus: document.getElementById("notificationStatus"),
+  statusToast: document.getElementById("statusToast"),
   notifyBtn: document.getElementById("notifyBtn"),
   categorySummaryList: document.getElementById("categorySummaryList"),
   progressCount: document.getElementById("progressCount"),
@@ -641,6 +643,19 @@ async function handleApiResponse(response) {
 function updateConnectionState(kind, message) {
   elements.connectionStatus.textContent = message;
   elements.connectionDot.classList.toggle("connected", kind === "connected");
+  showStatusToast(kind, message);
+}
+
+function showStatusToast(kind, message) {
+  window.clearTimeout(statusToastTimer);
+  elements.statusToast.textContent = message;
+  elements.statusToast.className = `status-toast ${kind}`;
+
+  if (kind === "connected" || kind === "configured") {
+    statusToastTimer = window.setTimeout(() => {
+      elements.statusToast.className = "status-toast hidden";
+    }, 2800);
+  }
 }
 
 function upsertTaskInState(task) {
