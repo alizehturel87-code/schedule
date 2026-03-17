@@ -1,47 +1,52 @@
 import { AnimatePresence } from "framer-motion";
-import { CATEGORY_META } from "./src/constants";
-import { canonicalCategoryId } from "./src/helpers";
-import TaskCard from "./src/components/TaskCard";
+import { PRIORITY_ORDER } from "./plannerConstants";
+import { priorityById } from "./plannerModel";
+import TaskCard from "./TaskCard";
 
-export default function PriorityView({ tasks, onToggle, onEditTask, onDeleteTask }) {
-  const openTasks = tasks.filter((task) => task.status !== "completed");
+export default function PriorityView({ tasks, categories, onToggle, onDeleteTask, onEditTask }) {
+  const openTasks = tasks.filter((task) => !task.completed);
 
   return (
-    <div className="section-stack">
-      {CATEGORY_META.map((category) => {
-        const categoryTasks = openTasks.filter((task) => canonicalCategoryId(task.category) === category.id);
+    <div className="view-stack">
+      {PRIORITY_ORDER.map((priorityId) => {
+        const priority = priorityById(priorityId);
+        const group = openTasks.filter((task) => task.priority === priorityId);
+        if (!group.length) {
+          return null;
+        }
+
         return (
-          <section key={category.id} className="view-section">
+          <section key={priorityId} className="view-section">
             <div className="section-header">
               <div>
-                <p className="section-kicker" style={{ color: category.accent }}>{category.shortLabel}</p>
-                <h2>{category.label}</h2>
+                <p className="section-header__eyebrow" style={{ color: priority.color }}>
+                  {priority.label}
+                </p>
               </div>
-              <span className="count-badge" style={{ color: category.accent, backgroundColor: category.surface }}>
-                {categoryTasks.length}
+              <span className="section-header__count" style={{ backgroundColor: priority.surface, color: priority.color }}>
+                {group.length}
               </span>
             </div>
 
-            <div className="cards-stack">
+            <div className="task-list">
               <AnimatePresence>
-                {categoryTasks.map((task) => (
+                {group.map((task) => (
                   <TaskCard
                     key={task.id}
                     task={task}
+                    categories={categories}
                     onToggle={onToggle}
-                    onEdit={onEditTask}
                     onDelete={onDeleteTask}
-                    showBroadHead
+                    onEdit={onEditTask}
                   />
                 ))}
               </AnimatePresence>
-              {categoryTasks.length === 0 ? (
-                <p className="empty-copy">No open tasks in this lane.</p>
-              ) : null}
             </div>
           </section>
         );
       })}
+
+      {!openTasks.length ? <p className="empty-copy empty-copy--roomy">All caught up!</p> : null}
     </div>
   );
 }

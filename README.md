@@ -1,58 +1,54 @@
 # Daily Planner Hub
 
-Daily Planner Hub is a Google Sheets backed planner with:
+Daily Planner Hub is a React and Vite planner that keeps the existing Netlify and Google Sheets backend flow, but now follows the category, priority, and calendar structure from the reference planner app.
 
-- a refreshed React and Vite frontend
-- priority, broad head, and calendar views
-- browser reminders for due tasks
-- Netlify Functions as the bridge to Google Sheets
-- Google Sheets as the source of truth for tasks, broad heads, and history
+## App structure
 
-## Project structure
+- `App.jsx`: main planner shell
+- `plannerApi.js`: frontend API bridge to Netlify Functions
+- `plannerConstants.js`: priority and category defaults
+- `plannerModel.js`: task, date, and category mapping helpers
+- `PriorityView.jsx`: priority-grouped task view
+- `CategoryView.jsx`: category-based task view
+- `CalendarView.jsx`: calendar view
+- `TaskForm.jsx`: add and edit task sheet
+- `CategoryForm.jsx`: add category sheet
+- `BottomNav.jsx`: bottom navigation
+- `app.css`: planner styles and typography
 
-- `index.html`: Vite entry HTML
-- `main.jsx`: React entry point
-- `App.jsx`: top-level app shell
-- `src/components/`: planner UI components
-- `src/hooks/usePlannerApi.js`: frontend state and Netlify API integration
-- `src/constants.js`: category metadata and app constants
-- `src/helpers.js`: formatting and normalization helpers
-- `src/index.css`: app styling
-- `netlify/functions/tasks.js`: Netlify Function for Google Sheets reads and writes
-- `netlify.toml`: Netlify build and functions config
+## Backend
 
-## Views
+- `netlify/functions/tasks.js` still handles Google Sheets reads and writes
+- the Sheets tabs remain:
+  - `Tasks`
+  - `Broad Heads`
+  - `History`
 
-- `Priority`: grouped by your existing task priority categories
-- `Broad Heads`: grouped by broad head while keeping the same backend structure
-- `Calendar`: monthly calendar with daily task agenda
+The frontend now uses the `Broad Heads` sheet as the category store so the backend database structure stays the same.
 
-## Google Sheets structure
+## Resetting old data
 
-The Netlify Function creates and maintains these tabs:
+The backend now supports a `resetPlanner` action that:
 
-- `Tasks`
-- `Broad Heads`
-- `History`
+- deletes all current tasks
+- deletes all current categories stored in `Broad Heads`
+- clears history
+- reseeds the default categories:
+  - Work
+  - Personal
+  - Health
+  - Events & Meetings
 
-## Environment variables
-
-Set these in Netlify:
-
-- `GOOGLE_SHEETS_SPREADSHEET_ID`
-- `GOOGLE_SERVICE_ACCOUNT_EMAIL`
-- `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`
+The app exposes this through the reset button in the header after deployment.
 
 ## Local development
-
-Install dependencies and run the app with Netlify so the frontend can reach the serverless function:
 
 ```powershell
 npm install
 npm run dev:netlify
 ```
 
-## Build
+## Production build
 
 ```powershell
 npm run build
