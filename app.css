@@ -52,6 +52,10 @@ button {
   padding-bottom: 92px;
 }
 
+.planner-shell {
+  position: relative;
+}
+
 .planner-header {
   position: sticky;
   top: 0;
@@ -658,5 +662,141 @@ button {
 
   .btn {
     width: 100%;
+  }
+}
+
+@media (min-width: 961px) {
+  .planner-app {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 28px 28px 36px;
+  }
+
+  .planner-header {
+    position: static;
+    padding: 0 0 22px;
+    background: none;
+    backdrop-filter: none;
+    border-bottom: 0;
+  }
+
+  .planner-header__inner {
+    max-width: none;
+    margin: 0;
+  }
+
+  .planner-header__top {
+    align-items: center;
+  }
+
+  .planner-shell {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+
+  .planner-main {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+  }
+
+  .planner-main > div {
+    min-width: 0;
+  }
+
+  .view-stack {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+    align-items: start;
+  }
+
+  .view-section {
+    padding: 22px;
+    border-radius: 26px;
+  }
+
+  .task-list {
+    gap: 12px;
+  }
+
+  .calendar-grid {
+    gap: 8px;
+  }
+
+  .calendar-cell {
+    min-height: 88px;
+    padding: 10px 8px;
+  }
+
+  .planner-nav {
+    position: sticky;
+    top: 0;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    padding: 0;
+    background: none;
+  }
+
+  .planner-nav__inner {
+    max-width: none;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 12px;
+    border-radius: 28px;
+  }
+
+  .planner-nav__item {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+    padding: 12px 14px 12px 18px;
+    border-radius: 16px;
+    font-size: 0.84rem;
+  }
+
+  .planner-nav__item.is-active {
+    background: rgba(217, 122, 40, 0.1);
+  }
+
+  .planner-nav__line {
+    top: 10px;
+    bottom: 10px;
+    left: 0;
+    right: auto;
+    width: 3px;
+    height: auto;
+  }
+
+  .planner-fab {
+    right: 32px;
+    bottom: 32px;
+  }
+
+  .sheet-backdrop {
+    align-items: center;
+    padding: 24px;
+  }
+
+  .sheet-panel {
+    width: min(760px, calc(100vw - 48px));
+    max-height: calc(100vh - 48px);
+    margin-bottom: 0;
+    border-radius: 28px;
+  }
+
+  .status-banner {
+    right: 32px;
+    bottom: 104px;
+    left: auto;
+    max-width: 360px;
+    margin: 0;
   }
 }

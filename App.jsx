@@ -86,59 +86,61 @@ export default function App() {
         </div>
       </header>
 
-      <main className="planner-main">
-        {loading ? (
-          <div className="loading-state">Loading planner...</div>
-        ) : (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeView}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.15 }}
-            >
-              {activeView === "calendar" ? (
-                <CalendarView
-                  tasks={tasks}
-                  categories={categories}
-                  onToggle={toggleTask}
-                  onDeleteTask={handleDeleteTask}
-                  onEditTask={setEditingTask}
-                />
-              ) : null}
+      <div className="planner-shell">
+        <BottomNav activeView={activeView} onViewChange={setActiveView} />
 
-              {activeView === "priority" ? (
-                <PriorityView
-                  tasks={tasks}
-                  categories={categories}
-                  onToggle={toggleTask}
-                  onDeleteTask={handleDeleteTask}
-                  onEditTask={setEditingTask}
-                />
-              ) : null}
+        <main className="planner-main">
+          {loading ? (
+            <div className="loading-state">Loading planner...</div>
+          ) : (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeView}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.15 }}
+              >
+                {activeView === "calendar" ? (
+                  <CalendarView
+                    tasks={tasks}
+                    categories={categories}
+                    onToggle={toggleTask}
+                    onDeleteTask={handleDeleteTask}
+                    onEditTask={setEditingTask}
+                  />
+                ) : null}
 
-              {activeView === "category" ? (
-                <CategoryView
-                  tasks={tasks}
-                  categories={categories}
-                  onToggle={toggleTask}
-                  onDeleteTask={handleDeleteTask}
-                  onEditTask={setEditingTask}
-                  onDeleteCategory={handleDeleteCategory}
-                  onAddCategory={() => setShowCategoryForm(true)}
-                />
-              ) : null}
-            </motion.div>
-          </AnimatePresence>
-        )}
-      </main>
+                {activeView === "priority" ? (
+                  <PriorityView
+                    tasks={tasks}
+                    categories={categories}
+                    onToggle={toggleTask}
+                    onDeleteTask={handleDeleteTask}
+                    onEditTask={setEditingTask}
+                  />
+                ) : null}
+
+                {activeView === "category" ? (
+                  <CategoryView
+                    tasks={tasks}
+                    categories={categories}
+                    onToggle={toggleTask}
+                    onDeleteTask={handleDeleteTask}
+                    onEditTask={setEditingTask}
+                    onDeleteCategory={handleDeleteCategory}
+                    onAddCategory={() => setShowCategoryForm(true)}
+                  />
+                ) : null}
+              </motion.div>
+            </AnimatePresence>
+          )}
+        </main>
+      </div>
 
       <button type="button" className="planner-fab" onClick={() => setEditingTask({})} aria-label="Add task">
         <Plus size={24} />
       </button>
-
-      <BottomNav activeView={activeView} onViewChange={setActiveView} />
 
       {editingTask !== null ? (
         <TaskForm
