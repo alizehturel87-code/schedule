@@ -1,78 +1,59 @@
-# Orbit Tasks
+# Daily Planner Hub
 
-Orbit Tasks is a personal to-do web app with:
+Daily Planner Hub is a Google Sheets backed planner with:
 
-- your five fixed task categories
-- a category board and a calendar view
-- browser notifications when a task reaches its due time
-- Google Sheets as the only database
-- Netlify Functions as the server-side bridge
+- a refreshed React and Vite frontend
+- priority, broad head, and calendar views
+- browser reminders for due tasks
+- Netlify Functions as the bridge to Google Sheets
+- Google Sheets as the source of truth for tasks, broad heads, and history
 
-## Project files
+## Project structure
 
-- `index.html`: app structure
-- `styles.css`: visual design
-- `app.js`: task logic, calendar rendering, due-time notifications, and API calls
-- `netlify/functions/tasks.js`: Netlify Function that reads and writes Google Sheets
-- `netlify.toml`: Netlify config
-- `package.json`: dependencies and local dev scripts
+- `index.html`: Vite entry HTML
+- `main.jsx`: React entry point
+- `App.jsx`: top-level app shell
+- `src/components/`: planner UI components
+- `src/hooks/usePlannerApi.js`: frontend state and Netlify API integration
+- `src/constants.js`: category metadata and app constants
+- `src/helpers.js`: formatting and normalization helpers
+- `src/index.css`: app styling
+- `netlify/functions/tasks.js`: Netlify Function for Google Sheets reads and writes
+- `netlify.toml`: Netlify build and functions config
 
-## Categories
+## Views
 
-- Ultra important to be completed in next 12 hrs
-- Important to be done in next 24 hrs
-- Weekend Tasks
-- Meetings and events to reach on time
-- Do it at your leisure
+- `Priority`: grouped by your existing task priority categories
+- `Broad Heads`: grouped by broad head while keeping the same backend structure
+- `Calendar`: monthly calendar with daily task agenda
 
 ## Google Sheets structure
 
-The Netlify Function creates and maintains two tabs:
+The Netlify Function creates and maintains these tabs:
 
-- `Tasks`: live task records
-- `History`: create, update, and delete history
+- `Tasks`
+- `Broad Heads`
+- `History`
 
-## Google setup
+## Environment variables
 
-1. Create a Google Sheet for this app.
-2. In Google Cloud, create or reuse a project.
-3. Enable the `Google Sheets API` for that project.
-4. Create a `Service Account`.
-5. Generate a JSON key for that service account.
-6. Share your Google Sheet with the service account email as an editor.
-
-## Netlify environment variables
-
-Set these in Netlify Site Settings -> Environment Variables:
+Set these in Netlify:
 
 - `GOOGLE_SHEETS_SPREADSHEET_ID`
 - `GOOGLE_SERVICE_ACCOUNT_EMAIL`
 - `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`
 
-For the private key, paste the full key including line breaks. If Netlify stores it with escaped `\n`, the function normalizes it.
-
-## Deploy to Netlify
-
-1. Push this repo to GitHub.
-2. Import the repo into Netlify.
-3. Netlify will detect [netlify.toml](/e:/Schedule/netlify.toml).
-4. Set the three Google environment variables.
-5. Trigger a deploy.
-6. Open the deployed site and start using the app.
-
 ## Local development
 
-Use Netlify CLI so the frontend can reach the serverless function:
+Install dependencies and run the app with Netlify so the frontend can reach the serverless function:
 
 ```powershell
 npm install
-npx netlify dev
+npm run dev:netlify
 ```
 
-Then open the local URL printed by Netlify.
+## Build
 
-## Notes
-
-- opening `index.html` directly as a `file://` URL will not work because the app expects the Netlify Function route
-- due-time notifications only fire while the page is open
-- the Google Sheet remains the full source of truth and history
+```powershell
+npm run build
+```

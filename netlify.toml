@@ -1,6 +1,11 @@
 [build]
-  publish = "."
+  publish = "dist"
   functions = "netlify/functions"
 
 [functions]
   node_bundler = "esbuild"
+
+[dev]
+  command = "vite"
+  targetPort = 5173
+  publish = "dist"
