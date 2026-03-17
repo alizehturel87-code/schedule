@@ -1,10 +1,10 @@
 import { Check, Clock3, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
-import { getCategoryById, formatTaskDueLabel, priorityById } from "./plannerModel";
+import { getCategoryById, formatTaskDueLabel, priorityById, resolveTaskPriority } from "./plannerModel";
 
-export default function TaskCard({ task, categories, onToggle, onDelete, onEdit }) {
+export default function TaskCard({ task, categories, now, onToggle, onDelete, onEdit }) {
   const category = getCategoryById(categories, task.categoryId);
-  const priority = priorityById(task.priority);
+  const priority = priorityById(resolveTaskPriority(task, now));
 
   return (
     <motion.article

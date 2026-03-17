@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { buildCalendarDays, fromDateKey, parseDueAt, startOfMonth, toDateKey } from "./plannerModel";
+import { buildCalendarDays, fromDateKey, startOfMonth, toDateKey } from "./plannerModel";
 import TaskCard from "./TaskCard";
 
-export default function CalendarView({ tasks, categories, onToggle, onDeleteTask, onEditTask }) {
+export default function CalendarView({ tasks, categories, now, onToggle, onDeleteTask, onEditTask }) {
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
   const [selectedDateKey, setSelectedDateKey] = useState(toDateKey(new Date()));
 
@@ -99,6 +99,7 @@ export default function CalendarView({ tasks, categories, onToggle, onDeleteTask
                 key={task.id}
                 task={task}
                 categories={categories}
+                now={now}
                 onToggle={onToggle}
                 onDelete={onDeleteTask}
                 onEdit={onEditTask}

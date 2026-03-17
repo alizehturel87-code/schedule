@@ -5,6 +5,7 @@ import TaskCard from "./TaskCard";
 export default function CategoryView({
   tasks,
   categories,
+  now,
   onToggle,
   onDeleteTask,
   onEditTask,
@@ -41,6 +42,7 @@ export default function CategoryView({
                     key={task.id}
                     task={task}
                     categories={categories}
+                    now={now}
                     onToggle={onToggle}
                     onDelete={onDeleteTask}
                     onEdit={onEditTask}

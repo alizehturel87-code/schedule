@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Plus, RefreshCw } from "lucide-react";
 import BottomNav from "./BottomNav";
@@ -14,6 +14,7 @@ export default function App() {
   const [activeView, setActiveView] = useState("priority");
   const [editingTask, setEditingTask] = useState(null);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const {
     tasks,
     categories,
@@ -27,6 +28,16 @@ export default function App() {
     addCategory,
     deleteCategory,
   } = usePlannerApi();
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   async function handleTaskSubmit(taskDraft) {
     const existingTask = taskDraft.id ? tasks.find((item) => item.id === taskDraft.id) : null;
@@ -105,6 +116,7 @@ export default function App() {
                   <CalendarView
                     tasks={tasks}
                     categories={categories}
+                    now={currentTime}
                     onToggle={toggleTask}
                     onDeleteTask={handleDeleteTask}
                     onEditTask={setEditingTask}
@@ -115,6 +127,7 @@ export default function App() {
                   <PriorityView
                     tasks={tasks}
                     categories={categories}
+                    now={currentTime}
                     onToggle={toggleTask}
                     onDeleteTask={handleDeleteTask}
                     onEditTask={setEditingTask}
@@ -125,6 +138,7 @@ export default function App() {
                   <CategoryView
                     tasks={tasks}
                     categories={categories}
+                    now={currentTime}
                     onToggle={toggleTask}
                     onDeleteTask={handleDeleteTask}
                     onEditTask={setEditingTask}

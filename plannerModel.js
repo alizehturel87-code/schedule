@@ -32,6 +32,26 @@ export function priorityById(value) {
   return PRIORITY_META[canonicalPriority(value)] || PRIORITY_META.open;
 }
 
+export function resolveTaskPriority(task, now = new Date()) {
+  const basePriority = canonicalPriority(task?.priority);
+  if (basePriority !== "today") {
+    return basePriority;
+  }
+
+  const createdAt = parseDueAt(task?.createdAt);
+  if (!createdAt) {
+    return basePriority;
+  }
+
+  const current = now instanceof Date ? now : parseDueAt(now);
+  if (!current) {
+    return basePriority;
+  }
+
+  const elapsedMs = current.getTime() - createdAt.getTime();
+  return elapsedMs >= 12 * 60 * 60 * 1000 ? "urgent" : basePriority;
+}
+
 export function defaultCategoryForId(categoryId) {
   return DEFAULT_CATEGORIES.find((item) => item.id === categoryId) || null;
 }

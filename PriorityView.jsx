@@ -1,16 +1,16 @@
 import { AnimatePresence } from "framer-motion";
 import { PRIORITY_ORDER } from "./plannerConstants";
-import { priorityById } from "./plannerModel";
+import { priorityById, resolveTaskPriority } from "./plannerModel";
 import TaskCard from "./TaskCard";
 
-export default function PriorityView({ tasks, categories, onToggle, onDeleteTask, onEditTask }) {
+export default function PriorityView({ tasks, categories, now, onToggle, onDeleteTask, onEditTask }) {
   const openTasks = tasks.filter((task) => !task.completed);
 
   return (
     <div className="view-stack">
       {PRIORITY_ORDER.map((priorityId) => {
         const priority = priorityById(priorityId);
-        const group = openTasks.filter((task) => task.priority === priorityId);
+        const group = openTasks.filter((task) => resolveTaskPriority(task, now) === priorityId);
         if (!group.length) {
           return null;
         }
@@ -35,6 +35,7 @@ export default function PriorityView({ tasks, categories, onToggle, onDeleteTask
                     key={task.id}
                     task={task}
                     categories={categories}
+                    now={now}
                     onToggle={onToggle}
                     onDelete={onDeleteTask}
                     onEdit={onEditTask}

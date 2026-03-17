@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { PRIORITY_ORDER } from "./plannerConstants";
-import { combineDueAt, priorityById, splitDueAt } from "./plannerModel";
+import { combineDueAt, priorityById, resolveTaskPriority, splitDueAt } from "./plannerModel";
 
 export default function TaskForm({ task, categories, onClose, onSubmit, onDelete }) {
   const [title, setTitle] = useState("");
@@ -29,7 +29,7 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
     setTitle(task.title || "");
     setDescription(task.description || "");
     setCategoryId(task.categoryId || categories[0]?.id || "");
-    setPriority(task.priority || "open");
+    setPriority(resolveTaskPriority(task));
     setDueDate(due.dueDate);
     setDueTime(due.dueTime);
     setIsEvent(task.categoryId === "events");
