@@ -10,6 +10,8 @@ import {
   toDateKey,
 } from "./plannerModel";
 
+const IDLE_STATUS = { kind: "configured", message: "" };
+
 async function handleApiResponse(response) {
   const data = await response.json().catch(() => null);
   if (!response.ok) {
@@ -42,7 +44,7 @@ export function usePlannerApi() {
   const [tasks, setTasks] = useState([]);
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState({ kind: "configured", message: "Planner ready." });
+  const [status, setStatus] = useState(IDLE_STATUS);
 
   const applyRemoteState = useCallback((response) => {
     const nextCategories = (response.broadHeads || []).map(parseCategoryRecord);
@@ -68,6 +70,21 @@ export function usePlannerApi() {
   useEffect(() => {
     syncPlanner();
   }, [syncPlanner]);
+
+  useEffect(() => {
+    if (!status.message || status.kind === "loading") {
+      return undefined;
+    }
+
+    const timeoutMs = status.kind === "error" ? 4000 : 2400;
+    const timeoutId = window.setTimeout(() => {
+      setStatus((current) => (current === status ? IDLE_STATUS : current));
+    }, timeoutMs);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [status]);
 
   const saveTask = useCallback(async (draft, existingTask = null) => {
     const category = getCategoryById(categories, draft.categoryId);

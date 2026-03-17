@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Plus, RefreshCw, RotateCcw } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import BottomNav from "./BottomNav";
 import CalendarView from "./CalendarView";
 import CategoryForm from "./CategoryForm";
@@ -26,7 +26,6 @@ export default function App() {
     deleteTask,
     addCategory,
     deleteCategory,
-    resetPlanner,
   } = usePlannerApi();
 
   async function handleTaskSubmit(taskDraft) {
@@ -65,14 +64,6 @@ export default function App() {
     await deleteCategory(categoryId);
   }
 
-  async function handleResetPlanner() {
-    const shouldReset = window.confirm("Reset all planner data and seed the default categories?");
-    if (!shouldReset) {
-      return;
-    }
-    await resetPlanner();
-  }
-
   return (
     <div className="planner-app">
       <header className="planner-header">
@@ -89,9 +80,6 @@ export default function App() {
             <div className="planner-header__actions">
               <button type="button" className="header-icon-btn" onClick={syncPlanner} aria-label="Sync planner">
                 <RefreshCw size={18} />
-              </button>
-              <button type="button" className="header-icon-btn" onClick={handleResetPlanner} aria-label="Reset planner">
-                <RotateCcw size={18} />
               </button>
             </div>
           </div>
@@ -169,7 +157,7 @@ export default function App() {
         />
       ) : null}
 
-      <div className={`status-banner status-banner--${status.kind}`}>{status.message}</div>
+      {status.message ? <div className={`status-banner status-banner--${status.kind}`}>{status.message}</div> : null}
     </div>
   );
 }
