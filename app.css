@@ -287,6 +287,16 @@ button {
   font-weight: 600;
 }
 
+.task-card__completed-at {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 6px 0 0;
+  color: #2f9b74;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
 .task-card__delete,
 .section-header__icon.danger {
   color: var(--danger);

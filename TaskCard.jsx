@@ -1,6 +1,18 @@
-import { Check, Clock3, Trash2 } from "lucide-react";
+import { Check, CheckCheck, Clock3, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
-import { getCategoryById, formatTaskDueLabel, priorityById, resolveTaskPriority } from "./plannerModel";
+import { getCategoryById, formatTaskDueLabel, parseDueAt, priorityById, resolveTaskPriority } from "./plannerModel";
+
+function formatCompletedAt(value) {
+  const date = parseDueAt(value);
+  if (!date) return null;
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
 
 export default function TaskCard({ task, categories, now, onToggle, onDelete, onEdit }) {
   const category = getCategoryById(categories, task.categoryId);
@@ -48,6 +60,12 @@ export default function TaskCard({ task, categories, now, onToggle, onDelete, on
             </span>
           ) : null}
         </div>
+        {task.completed && task.completedAt ? (
+          <p className="task-card__completed-at">
+            <CheckCheck size={11} />
+            {formatCompletedAt(task.completedAt)}
+          </p>
+        ) : null}
       </button>
 
       <button type="button" className="task-card__delete" onClick={() => onDelete(task.id)} aria-label="Delete task">
