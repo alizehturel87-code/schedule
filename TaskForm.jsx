@@ -1,25 +1,34 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
+import { CalendarDays, Infinity, X } from "lucide-react";
 import { PRIORITY_ORDER } from "./plannerConstants";
 import { combineDueAt, priorityById, resolveTaskPriority, splitDueAt } from "./plannerModel";
 
 export default function TaskForm({ task, categories, onClose, onSubmit, onDelete }) {
   const [title, setTitle] = useState("");
+  const [titleError, setTitleError] = useState(false);
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState(categories[0]?.id || "");
   const [priority, setPriority] = useState("open");
+  // null = not chosen yet, "date" = has a deadline, "open" = no deadline
+  const [deadlineMode, setDeadlineMode] = useState(null);
+  const [deadlineError, setDeadlineError] = useState(false);
   const [dueDate, setDueDate] = useState("");
+  const [dueDateError, setDueDateError] = useState(false);
   const [dueTime, setDueTime] = useState("");
   const [isEvent, setIsEvent] = useState(false);
 
   useEffect(() => {
     if (!task) {
       setTitle("");
+      setTitleError(false);
       setDescription("");
       setCategoryId(categories[0]?.id || "");
       setPriority("open");
+      setDeadlineMode(null);
+      setDeadlineError(false);
       setDueDate("");
+      setDueDateError(false);
       setDueTime("");
       setIsEvent(false);
       return;
@@ -27,19 +36,49 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
 
     const due = splitDueAt(task.dueAt);
     setTitle(task.title || "");
+    setTitleError(false);
     setDescription(task.description || "");
     setCategoryId(task.categoryId || categories[0]?.id || "");
     setPriority(resolveTaskPriority(task));
+    setDeadlineMode(task.dueAt ? "date" : "open");
+    setDeadlineError(false);
     setDueDate(due.dueDate);
+    setDueDateError(false);
     setDueTime(due.dueTime);
     setIsEvent(task.categoryId === "events");
   }, [categories, task]);
 
+  function handleDeadlineMode(mode) {
+    setDeadlineMode(mode);
+    setDeadlineError(false);
+    if (mode === "open") {
+      setDueDate("");
+      setDueTime("");
+      setDueDateError(false);
+    }
+  }
+
   function handleSubmit(event) {
     event.preventDefault();
+
+    let hasError = false;
+
     if (!title.trim()) {
-      return;
+      setTitleError(true);
+      hasError = true;
     }
+
+    if (deadlineMode === null) {
+      setDeadlineError(true);
+      hasError = true;
+    }
+
+    if (deadlineMode === "date" && !dueDate) {
+      setDueDateError(true);
+      hasError = true;
+    }
+
+    if (hasError) return;
 
     onSubmit({
       id: task?.id || "",
@@ -47,9 +86,9 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
       description: description.trim(),
       categoryId,
       priority,
-      dueDate,
-      dueTime,
-      dueAt: combineDueAt(dueDate, dueTime),
+      dueDate: deadlineMode === "date" ? dueDate : "",
+      dueTime: deadlineMode === "date" ? dueTime : "",
+      dueAt: deadlineMode === "date" ? combineDueAt(dueDate, dueTime) : "",
       completed: task?.completed || false,
       createdAt: task?.createdAt || "",
       completedAt: task?.completedAt || "",
@@ -81,14 +120,17 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
           </div>
 
           <form className="sheet-form" onSubmit={handleSubmit}>
-            <input
-              className="sheet-form__input sheet-form__input--title"
-              type="text"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="What needs to be done?"
-              autoFocus
-            />
+            <div>
+              <input
+                className={`sheet-form__input sheet-form__input--title ${titleError ? "has-error" : ""}`}
+                type="text"
+                value={title}
+                onChange={(event) => { setTitle(event.target.value); setTitleError(false); }}
+                placeholder="What needs to be done?"
+                autoFocus
+              />
+              {titleError ? <p className="sheet-form__error">Please enter a task name.</p> : null}
+            </div>
 
             <textarea
               className="sheet-form__textarea"
@@ -138,23 +180,76 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
               </div>
             </div>
 
-            <div className="sheet-form__row">
-              <label className="sheet-form__field">
-                <span>Due date</span>
-                <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
+            {/* Deadline — required, choose one */}
+            <div className="sheet-form__group">
+              <label>
+                Deadline <span className="sheet-form__required">*</span>
               </label>
-              {(isEvent || dueDate) ? (
-                <label className="sheet-form__field">
-                  <span>Time</span>
-                  <input type="time" value={dueTime} onChange={(event) => setDueTime(event.target.value)} />
-                </label>
-              ) : null}
-            </div>
 
-            <label className="sheet-form__toggle">
-              <input type="checkbox" checked={isEvent} onChange={(event) => setIsEvent(event.target.checked)} />
-              <span>This is an event or meeting</span>
-            </label>
+              <div className="deadline-choice-row">
+                <button
+                  type="button"
+                  className={`deadline-choice-btn ${deadlineMode === "date" ? "is-active" : ""}`}
+                  onClick={() => handleDeadlineMode("date")}
+                >
+                  <CalendarDays size={16} />
+                  Set a date
+                </button>
+                <button
+                  type="button"
+                  className={`deadline-choice-btn ${deadlineMode === "open" ? "is-active is-open" : ""}`}
+                  onClick={() => handleDeadlineMode("open")}
+                >
+                  <Infinity size={16} />
+                  Keep open
+                </button>
+              </div>
+
+              {deadlineError ? (
+                <p className="sheet-form__error">Please set a deadline or choose "Keep open".</p>
+              ) : null}
+
+              <AnimatePresence>
+                {deadlineMode === "date" ? (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.18 }}
+                    style={{ overflow: "hidden" }}
+                  >
+                    <div className="sheet-form__row" style={{ marginTop: 10 }}>
+                      <label className="sheet-form__field">
+                        <span>Date {dueDateError ? <span className="sheet-form__required">required</span> : null}</span>
+                        <input
+                          type="date"
+                          value={dueDate}
+                          onChange={(event) => { setDueDate(event.target.value); setDueDateError(false); }}
+                          className={dueDateError ? "has-error" : ""}
+                        />
+                      </label>
+                      <label className="sheet-form__field">
+                        <span>Time (optional)</span>
+                        <input
+                          type="time"
+                          value={dueTime}
+                          onChange={(event) => setDueTime(event.target.value)}
+                        />
+                      </label>
+                    </div>
+
+                    <label className="sheet-form__toggle" style={{ marginTop: 10 }}>
+                      <input
+                        type="checkbox"
+                        checked={isEvent}
+                        onChange={(event) => setIsEvent(event.target.checked)}
+                      />
+                      <span>This is an event or meeting</span>
+                    </label>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </div>
 
             <div className="sheet-form__actions">
               {task ? (

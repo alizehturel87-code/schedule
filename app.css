@@ -543,6 +543,58 @@ button {
   border-radius: 14px;
 }
 
+.sheet-form__required {
+  color: var(--danger);
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+.sheet-form__error {
+  margin: 6px 0 0;
+  color: var(--danger);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.sheet-form__input.has-error,
+.sheet-form__field input.has-error {
+  border-bottom-color: var(--danger);
+}
+
+.deadline-choice-row {
+  display: flex;
+  gap: 10px;
+}
+
+.deadline-choice-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 1;
+  min-height: 46px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: 0.84rem;
+  font-weight: 700;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.deadline-choice-btn.is-active {
+  border-color: var(--primary);
+  background: rgba(217, 122, 40, 0.1);
+  color: var(--primary);
+}
+
+.deadline-choice-btn.is-active.is-open {
+  border-color: #4a84d8;
+  background: rgba(74, 132, 216, 0.1);
+  color: #4a84d8;
+}
+
 .sheet-form__row {
   display: flex;
   gap: 12px;
