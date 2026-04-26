@@ -1,4 +1,4 @@
-import { BookOpen, Calendar, Flag, LayoutGrid } from "lucide-react";
+import { BookOpen, Calendar, Flag, LayoutGrid, TrendingUp } from "lucide-react";
 import { motion } from "framer-motion";
 
 const NAV_ITEMS = [
@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { id: "priority", label: "Priority", icon: Flag },
   { id: "category", label: "Category", icon: LayoutGrid },
   { id: "journal", label: "Journal", icon: BookOpen },
+  { id: "analysis", label: "Stats", icon: TrendingUp },
 ];
 
 export default function BottomNav({ activeView, onViewChange }) {

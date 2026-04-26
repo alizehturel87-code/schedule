@@ -745,6 +745,303 @@ button {
   padding: 28px 0;
 }
 
+/* ── Analysis ────────────────────────────────── */
+
+.analysis-stat-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.analysis-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 8px;
+  border-radius: 16px;
+  background: var(--secondary);
+  gap: 4px;
+}
+
+.analysis-stat__value {
+  font-size: 1.6rem;
+  font-family: "DM Serif Display", serif;
+  font-weight: 400;
+  color: var(--foreground);
+  line-height: 1;
+}
+
+.analysis-stat__value--done { color: #2f9b74; }
+.analysis-stat__value--pending { color: var(--primary); }
+
+.analysis-stat__label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.analysis-rate-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.analysis-rate-block__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.analysis-rate-block__label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.analysis-rate-block__pct {
+  font-size: 1.4rem;
+  font-family: "DM Serif Display", serif;
+  font-weight: 400;
+}
+
+.analysis-rate-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--secondary);
+  overflow: hidden;
+  gap: 2px;
+}
+
+.analysis-rate-bar__fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.analysis-rate-bar__fill--on-time { background: #2f9b74; }
+.analysis-rate-bar__fill--late { background: #d45555; }
+
+.analysis-rate-block__legend {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.analysis-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.analysis-legend--on-time { color: #2f9b74; }
+.analysis-legend--late { color: #d45555; }
+.analysis-legend--open { color: var(--muted); }
+
+/* Timeline */
+
+.analysis-timeline {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 110px;
+  padding-bottom: 28px;
+  position: relative;
+}
+
+.analysis-day {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  position: relative;
+}
+
+.analysis-day__bar-wrap {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.analysis-day__bar {
+  width: 100%;
+  max-width: 28px;
+  border-radius: 6px 6px 0 0;
+  background: rgba(212, 85, 85, 0.4);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  min-height: 4px;
+}
+
+.analysis-day__bar--empty {
+  height: 3px;
+  background: var(--secondary);
+  border-radius: 3px;
+}
+
+.analysis-day__bar-on-time {
+  width: 100%;
+  background: #2f9b74;
+  border-radius: 0;
+}
+
+.analysis-day__count {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--muted);
+  position: absolute;
+  bottom: 16px;
+}
+
+.analysis-day__label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--muted);
+  position: absolute;
+  bottom: 0;
+}
+
+.analysis-day.is-today .analysis-day__label {
+  color: var(--primary);
+}
+
+.analysis-day__today-dot {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--primary);
+  position: absolute;
+  bottom: 10px;
+}
+
+.analysis-timeline-legend {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+/* Category breakdown */
+
+.analysis-category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.analysis-category-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.analysis-category-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.analysis-category-row__emoji {
+  font-size: 1rem;
+}
+
+.analysis-category-row__name {
+  font-size: 0.88rem;
+  font-weight: 700;
+  flex: 1;
+}
+
+.analysis-category-row__counts {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.analysis-category-row__rate {
+  font-weight: 700;
+}
+
+/* Rolled / Late lists */
+
+.analysis-rolled-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.analysis-rolled-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.analysis-rolled-row:last-child {
+  border-bottom: 0;
+}
+
+.analysis-rolled-row__left {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.analysis-rolled-row__title {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.analysis-rolled-row__origin {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.analysis-rolled-row__reason {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-style: italic;
+}
+
+.analysis-late-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(212, 85, 85, 0.1);
+  color: var(--danger);
+  font-size: 0.74rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Nav: tighten for 5 items */
+.planner-nav__item {
+  min-width: 60px;
+  font-size: 0.68rem;
+}
+
 /* ── Journal ─────────────────────────────────── */
 
 .journal-cta-desc {

@@ -5,6 +5,7 @@ import BottomNav from "./BottomNav";
 import CalendarView from "./CalendarView";
 import CategoryForm from "./CategoryForm";
 import CategoryView from "./CategoryView";
+import AnalysisView from "./AnalysisView";
 import JournalEntrySheet from "./JournalEntrySheet";
 import JournalView from "./JournalView";
 import PriorityView from "./PriorityView";
@@ -189,6 +190,10 @@ export default function App() {
                     tasks={tasks}
                     onOpenJournal={handleOpenJournal}
                   />
+                ) : null}
+
+                {activeView === "analysis" ? (
+                  <AnalysisView tasks={tasks} categories={categories} />
                 ) : null}
               </motion.div>
             </AnimatePresence>
