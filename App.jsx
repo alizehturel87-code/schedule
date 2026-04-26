@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Plus, RefreshCw } from "lucide-react";
 import BottomNav from "./BottomNav";
 import CalendarView from "./CalendarView";
 import CategoryForm from "./CategoryForm";
 import CategoryView from "./CategoryView";
+import JournalEntrySheet from "./JournalEntrySheet";
+import JournalView from "./JournalView";
 import PriorityView from "./PriorityView";
 import TaskForm from "./TaskForm";
 import { usePlannerApi } from "./plannerApi";
@@ -14,19 +16,27 @@ export default function App() {
   const [activeView, setActiveView] = useState("priority");
   const [editingTask, setEditingTask] = useState(null);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [journalDate, setJournalDate] = useState(null);
+  const [journalEntry, setJournalEntry] = useState(null);
+  const [journalSaving, setJournalSaving] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => new Date());
+
   const {
     tasks,
     categories,
     loading,
     status,
     taskCounts,
+    journalSummaries,
+    journalCache,
     syncPlanner,
     saveTask,
     toggleTask,
     deleteTask,
     addCategory,
     deleteCategory,
+    saveJournal,
+    loadJournalForDate,
   } = usePlannerApi();
 
   useEffect(() => {
@@ -75,6 +85,29 @@ export default function App() {
     await deleteCategory(categoryId);
   }
 
+  const handleOpenJournal = useCallback(async (date) => {
+    setJournalDate(date);
+    setJournalEntry(null);
+    // Load existing journal if one exists
+    const existing = await loadJournalForDate(date);
+    setJournalEntry(existing || null);
+  }, [loadJournalForDate]);
+
+  function handleCloseJournal() {
+    setJournalDate(null);
+    setJournalEntry(null);
+  }
+
+  async function handleJournalSubmit(date, outcomes, reflection) {
+    setJournalSaving(true);
+    const saved = await saveJournal(date, outcomes, reflection);
+    setJournalSaving(false);
+    if (saved) {
+      setJournalDate(null);
+      setJournalEntry(null);
+    }
+  }
+
   return (
     <div className="planner-app">
       <header className="planner-header">
@@ -120,6 +153,8 @@ export default function App() {
                     onToggle={toggleTask}
                     onDeleteTask={handleDeleteTask}
                     onEditTask={setEditingTask}
+                    journalSummaries={journalSummaries}
+                    onOpenJournal={handleOpenJournal}
                   />
                 ) : null}
 
@@ -146,6 +181,15 @@ export default function App() {
                     onAddCategory={() => setShowCategoryForm(true)}
                   />
                 ) : null}
+
+                {activeView === "journal" ? (
+                  <JournalView
+                    journalSummaries={journalSummaries}
+                    journalCache={journalCache}
+                    tasks={tasks}
+                    onOpenJournal={handleOpenJournal}
+                  />
+                ) : null}
               </motion.div>
             </AnimatePresence>
           )}
@@ -170,6 +214,18 @@ export default function App() {
         <CategoryForm
           onClose={() => setShowCategoryForm(false)}
           onSubmit={handleAddCategory}
+        />
+      ) : null}
+
+      {journalDate ? (
+        <JournalEntrySheet
+          date={journalDate}
+          tasks={tasks}
+          categories={categories}
+          existingJournal={journalEntry}
+          onClose={handleCloseJournal}
+          onSubmit={handleJournalSubmit}
+          saving={journalSaving}
         />
       ) : null}
 

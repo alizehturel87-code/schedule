@@ -1,21 +1,29 @@
 import { useMemo, useState } from "react";
 import { AnimatePresence } from "framer-motion";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, PenLine } from "lucide-react";
 import { buildCalendarDays, fromDateKey, startOfMonth, toDateKey } from "./plannerModel";
 import TaskCard from "./TaskCard";
 
-export default function CalendarView({ tasks, categories, now, onToggle, onDeleteTask, onEditTask }) {
+export default function CalendarView({
+  tasks,
+  categories,
+  now,
+  onToggle,
+  onDeleteTask,
+  onEditTask,
+  journalSummaries,
+  onOpenJournal,
+}) {
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
   const [selectedDateKey, setSelectedDateKey] = useState(toDateKey(new Date()));
 
   const days = useMemo(() => buildCalendarDays(currentMonth), [currentMonth]);
+
   const taskDates = useMemo(() => {
     const dateMap = new Map();
     tasks.forEach((task) => {
       const key = task.dueAt ? toDateKey(task.dueAt) : toDateKey(new Date());
-      if (!key) {
-        return;
-      }
+      if (!key) return;
       dateMap.set(key, (dateMap.get(key) || 0) + 1);
     });
     return dateMap;
@@ -31,19 +39,30 @@ export default function CalendarView({ tasks, categories, now, onToggle, onDelet
   }, [selectedDateKey, tasks]);
 
   const selectedDate = fromDateKey(selectedDateKey);
+  const todayKey = toDateKey(new Date());
+  const isSelectedPastOrToday = selectedDateKey <= todayKey;
+  const selectedJournal = journalSummaries?.get(selectedDateKey);
 
   return (
     <div className="view-stack">
       <section className="view-section">
         <div className="calendar-header">
-          <button type="button" className="section-header__icon" onClick={() => setCurrentMonth((current) => startOfMonth(new Date(current.getFullYear(), current.getMonth() - 1, 1)))}>
+          <button
+            type="button"
+            className="section-header__icon"
+            onClick={() => setCurrentMonth((current) => startOfMonth(new Date(current.getFullYear(), current.getMonth() - 1, 1)))}
+          >
             <ChevronLeft size={18} />
           </button>
           <div className="calendar-header__copy">
             <p className="section-header__eyebrow">Calendar</p>
             <h2>{new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(currentMonth)}</h2>
           </div>
-          <button type="button" className="section-header__icon" onClick={() => setCurrentMonth((current) => startOfMonth(new Date(current.getFullYear(), current.getMonth() + 1, 1)))}>
+          <button
+            type="button"
+            className="section-header__icon"
+            onClick={() => setCurrentMonth((current) => startOfMonth(new Date(current.getFullYear(), current.getMonth() + 1, 1)))}
+          >
             <ChevronRight size={18} />
           </button>
         </div>
@@ -59,7 +78,14 @@ export default function CalendarView({ tasks, categories, now, onToggle, onDelet
             const key = toDateKey(day.date);
             const count = taskDates.get(key) || 0;
             const isSelected = key === selectedDateKey;
-            const isToday = key === toDateKey(new Date());
+            const isToday = key === todayKey;
+            const journal = journalSummaries?.get(key);
+            const journalClass = journal
+              ? journal.missedCount === 0
+                ? "has-journal-done"
+                : "has-journal-missed"
+              : "";
+
             return (
               <button
                 key={key}
@@ -69,11 +95,15 @@ export default function CalendarView({ tasks, categories, now, onToggle, onDelet
                   !day.inCurrentMonth ? "is-muted" : "",
                   isSelected ? "is-selected" : "",
                   isToday ? "is-today" : "",
+                  journalClass,
                 ].filter(Boolean).join(" ")}
                 onClick={() => setSelectedDateKey(key)}
               >
                 <span className="calendar-cell__day">{day.date.getDate()}</span>
                 {count ? <span className="calendar-cell__dot">{count}</span> : null}
+                {journal ? (
+                  <span className={`calendar-cell__journal-dot ${journal.missedCount === 0 ? "is-done" : "is-missed"}`} />
+                ) : null}
               </button>
             );
           })}
@@ -84,13 +114,35 @@ export default function CalendarView({ tasks, categories, now, onToggle, onDelet
         <div className="section-header">
           <div>
             <p className="section-header__eyebrow">
-              {selectedDateKey === toDateKey(new Date())
+              {selectedDateKey === todayKey
                 ? "Today"
                 : new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric" }).format(selectedDate)}
             </p>
           </div>
-          <span className="section-header__count">{tasksForDate.length}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {isSelectedPastOrToday && onOpenJournal ? (
+              <button
+                type="button"
+                className={`calendar-journal-btn ${selectedJournal ? "has-journal" : ""}`}
+                onClick={() => onOpenJournal(selectedDateKey)}
+                aria-label={selectedJournal ? "View journal entry" : "Write journal entry"}
+              >
+                <PenLine size={14} />
+                {selectedJournal ? "Journal" : "Review"}
+              </button>
+            ) : null}
+            <span className="section-header__count">{tasksForDate.length}</span>
+          </div>
         </div>
+
+        {selectedJournal ? (
+          <div className={`calendar-journal-summary ${selectedJournal.missedCount === 0 ? "is-all-done" : "is-has-missed"}`}>
+            <span className="journal-tally journal-tally--done">{selectedJournal.doneCount} done</span>
+            {selectedJournal.missedCount > 0 ? (
+              <span className="journal-tally journal-tally--missed">{selectedJournal.missedCount} missed</span>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="task-list">
           <AnimatePresence>

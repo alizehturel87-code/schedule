@@ -4,7 +4,7 @@ import {
   combineDueAt,
   getCategoryById,
   parseCategoryRecord,
-  safeParse,
+  parseJournalRecord,
   sortTasks,
   taskToViewModel,
   toDateKey,
@@ -29,11 +29,15 @@ async function apiRequest(action, payload = {}) {
     return handleApiResponse(response);
   }
 
+  if (action === "getJournal") {
+    const { date } = payload;
+    const response = await fetch(`${API_ENDPOINT}?action=getJournal&date=${encodeURIComponent(date)}&ts=${Date.now()}`, { method: "GET" });
+    return handleApiResponse(response);
+  }
+
   const response = await fetch(API_ENDPOINT, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, ...payload }),
   });
 
@@ -45,6 +49,10 @@ export function usePlannerApi() {
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(IDLE_STATUS);
+  // Map<dateKey, {doneCount, missedCount}> for calendar indicators
+  const [journalSummaries, setJournalSummaries] = useState(new Map());
+  // Cache of full journal entries loaded on demand
+  const [journalCache, setJournalCache] = useState(new Map());
 
   const applyRemoteState = useCallback((response) => {
     const nextCategories = (response.broadHeads || []).map(parseCategoryRecord);
@@ -52,6 +60,11 @@ export function usePlannerApi() {
     const nextTasks = sortTasks((response.tasks || []).map((task) => taskToViewModel(task, categoriesToUse)));
     setCategories(categoriesToUse);
     setTasks(nextTasks);
+
+    if (Array.isArray(response.journalSummaries)) {
+      const map = new Map(response.journalSummaries.map((s) => [s.date, s]));
+      setJournalSummaries(map);
+    }
   }, []);
 
   const syncPlanner = useCallback(async () => {
@@ -240,6 +253,7 @@ export function usePlannerApi() {
       setStatus({ kind: "loading", message: "Resetting planner data..." });
       const response = await apiRequest("resetPlanner");
       applyRemoteState(response);
+      setJournalCache(new Map());
       setStatus({ kind: "connected", message: "Planner reset." });
       return true;
     } catch (error) {
@@ -247,6 +261,68 @@ export function usePlannerApi() {
       return false;
     }
   }, [applyRemoteState]);
+
+  // Load full journal entry for a date (cached)
+  const loadJournalForDate = useCallback(async (date) => {
+    if (journalCache.has(date)) {
+      return journalCache.get(date);
+    }
+
+    try {
+      const response = await apiRequest("getJournal", { date });
+      const journal = response.journal ? parseJournalRecord(response.journal) : null;
+      setJournalCache((current) => new Map(current).set(date, journal));
+      return journal;
+    } catch {
+      return null;
+    }
+  }, [journalCache]);
+
+  const saveJournal = useCallback(async (date, outcomes, reflection) => {
+    setStatus({ kind: "loading", message: "Saving journal..." });
+    try {
+      const response = await apiRequest("saveJournal", {
+        journal: { date, reflection, outcomes },
+      });
+
+      const savedJournal = parseJournalRecord(response.journal);
+
+      // Update journal cache
+      setJournalCache((current) => new Map(current).set(date, savedJournal));
+
+      // Update journal summary for calendar indicators
+      setJournalSummaries((current) => {
+        const next = new Map(current);
+        next.set(date, {
+          date,
+          doneCount: savedJournal.doneCount,
+          missedCount: savedJournal.missedCount,
+        });
+        return next;
+      });
+
+      // Apply rolled-over tasks back into local task state
+      if (Array.isArray(response.updatedTasks) && response.updatedTasks.length > 0) {
+        setTasks((current) => {
+          let next = [...current];
+          for (const raw of response.updatedTasks) {
+            const updated = taskToViewModel(raw, categories);
+            const idx = next.findIndex((t) => t.id === updated.id);
+            if (idx !== -1) {
+              next[idx] = updated;
+            }
+          }
+          return sortTasks(next);
+        });
+      }
+
+      setStatus({ kind: "connected", message: "Journal saved." });
+      return savedJournal;
+    } catch (error) {
+      setStatus({ kind: "error", message: `Journal save failed. ${error.message}` });
+      return null;
+    }
+  }, [categories]);
 
   const taskCounts = useMemo(() => {
     const pending = tasks.filter((task) => !task.completed).length;
@@ -261,6 +337,8 @@ export function usePlannerApi() {
     loading,
     status,
     taskCounts,
+    journalSummaries,
+    journalCache,
     syncPlanner,
     saveTask,
     toggleTask,
@@ -268,5 +346,7 @@ export function usePlannerApi() {
     addCategory,
     deleteCategory,
     resetPlanner,
+    saveJournal,
+    loadJournalForDate,
   };
 }

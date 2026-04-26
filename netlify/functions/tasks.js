@@ -13,6 +13,9 @@ const TASK_HEADERS = [
   "createdAt",
   "updatedAt",
   "completedAt",
+  "rolloverCount",
+  "originalDueAt",
+  "failureReason",
 ];
 
 const BROAD_HEAD_HEADERS = [
@@ -36,29 +39,40 @@ const HISTORY_HEADERS = [
   "payload",
 ];
 
+const JOURNAL_HEADERS = [
+  "id",
+  "date",
+  "reflection",
+  "taskOutcomes",
+  "createdAt",
+  "updatedAt",
+];
+
 const TASK_SHEET = "Tasks";
 const BROAD_HEAD_SHEET = "Broad Heads";
 const HISTORY_SHEET = "History";
+const JOURNAL_SHEET = "Journal";
+
 const DEFAULT_CATEGORY_SEEDS = [
   {
     id: "work",
     title: "Work",
-    notes: JSON.stringify({ emoji: "\uD83D\uDCBC", color: "#ef8f35", system: true }),
+    notes: JSON.stringify({ emoji: "💼", color: "#ef8f35", system: true }),
   },
   {
     id: "personal",
     title: "Personal",
-    notes: JSON.stringify({ emoji: "\uD83C\uDFE0", color: "#2f9b74", system: true }),
+    notes: JSON.stringify({ emoji: "🏠", color: "#2f9b74", system: true }),
   },
   {
     id: "health",
     title: "Health",
-    notes: JSON.stringify({ emoji: "\uD83D\uDCAA", color: "#d1a321", system: true }),
+    notes: JSON.stringify({ emoji: "💪", color: "#d1a321", system: true }),
   },
   {
     id: "events",
     title: "Events & Meetings",
-    notes: JSON.stringify({ emoji: "\uD83D\uDCC5", color: "#d95f5f", system: true }),
+    notes: JSON.stringify({ emoji: "📅", color: "#d95f5f", system: true }),
   },
 ];
 
@@ -75,17 +89,27 @@ exports.handler = async (event) => {
 
     if (event.httpMethod === "GET") {
       const action = event.queryStringParameters?.action || "list";
-      if (action !== "list") {
-        return response(400, { ok: false, error: "Unsupported action." }, headers);
+
+      if (action === "list") {
+        let broadHeads = await listBroadHeads(sheets, config.spreadsheetId);
+        if (!broadHeads.length) {
+          broadHeads = await seedDefaultBroadHeads(sheets, config.spreadsheetId);
+        }
+        const tasks = await listTasks(sheets, config.spreadsheetId);
+        const journalSummaries = await listJournalSummaries(sheets, config.spreadsheetId);
+        return response(200, { ok: true, tasks, broadHeads, journalSummaries }, headers);
       }
 
-      let broadHeads = await listBroadHeads(sheets, config.spreadsheetId);
-      if (!broadHeads.length) {
-        broadHeads = await seedDefaultBroadHeads(sheets, config.spreadsheetId);
+      if (action === "getJournal") {
+        const date = event.queryStringParameters?.date;
+        if (!date) {
+          return response(400, { ok: false, error: "date parameter is required." }, headers);
+        }
+        const journal = await getJournalByDate(sheets, config.spreadsheetId, date);
+        return response(200, { ok: true, journal }, headers);
       }
-      const tasks = await listTasks(sheets, config.spreadsheetId);
 
-      return response(200, { ok: true, tasks, broadHeads }, headers);
+      return response(400, { ok: false, error: "Unsupported action." }, headers);
     }
 
     if (event.httpMethod !== "POST") {
@@ -117,6 +141,11 @@ exports.handler = async (event) => {
     if (payload.action === "resetPlanner") {
       const data = await resetPlanner(sheets, config.spreadsheetId);
       return response(200, { ok: true, ...data }, headers);
+    }
+
+    if (payload.action === "saveJournal") {
+      const result = await saveJournal(sheets, config.spreadsheetId, payload.journal || {});
+      return response(200, { ok: true, ...result }, headers);
     }
 
     return response(400, { ok: false, error: "Unsupported action." }, headers);
@@ -173,13 +202,14 @@ async function ensureSheetsStructure(sheets, spreadsheetId) {
   if (!titles.has(TASK_SHEET)) {
     requests.push({ addSheet: { properties: { title: TASK_SHEET } } });
   }
-
   if (!titles.has(BROAD_HEAD_SHEET)) {
     requests.push({ addSheet: { properties: { title: BROAD_HEAD_SHEET } } });
   }
-
   if (!titles.has(HISTORY_SHEET)) {
     requests.push({ addSheet: { properties: { title: HISTORY_SHEET } } });
+  }
+  if (!titles.has(JOURNAL_SHEET)) {
+    requests.push({ addSheet: { properties: { title: JOURNAL_SHEET } } });
   }
 
   if (requests.length) {
@@ -201,11 +231,13 @@ async function ensureSheetsStructure(sheets, spreadsheetId) {
   await ensureSheetSchema(sheets, spreadsheetId, TASK_SHEET, TASK_HEADERS);
   await ensureSheetSchema(sheets, spreadsheetId, BROAD_HEAD_SHEET, BROAD_HEAD_HEADERS);
   await ensureSheetSchema(sheets, spreadsheetId, HISTORY_SHEET, HISTORY_HEADERS);
+  await ensureSheetSchema(sheets, spreadsheetId, JOURNAL_SHEET, JOURNAL_HEADERS);
 
   return {
     taskSheetId: sheetMap.get(TASK_SHEET),
     broadHeadSheetId: sheetMap.get(BROAD_HEAD_SHEET),
     historySheetId: sheetMap.get(HISTORY_SHEET),
+    journalSheetId: sheetMap.get(JOURNAL_SHEET),
   };
 }
 
@@ -291,6 +323,137 @@ async function getBroadHeadRows(sheets, spreadsheetId) {
     .filter((entry) => entry.broadHead.id);
 }
 
+async function getJournalRows(sheets, spreadsheetId) {
+  const result = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${JOURNAL_SHEET}!A:Z`,
+  });
+
+  const values = result.data.values || [];
+  const headers = values[0] || JOURNAL_HEADERS;
+
+  return values
+    .slice(1)
+    .map((row, index) => ({
+      rowNumber: index + 2,
+      journal: rowToRecord(row, headers),
+    }))
+    .filter((entry) => entry.journal.id);
+}
+
+async function listJournalSummaries(sheets, spreadsheetId) {
+  const rows = await getJournalRows(sheets, spreadsheetId);
+  return rows.map(({ journal }) => {
+    const outcomes = safeParseJson(journal.taskOutcomes, []);
+    return {
+      date: journal.date,
+      doneCount: outcomes.filter((o) => o.done).length,
+      missedCount: outcomes.filter((o) => !o.done).length,
+    };
+  });
+}
+
+async function getJournalByDate(sheets, spreadsheetId, date) {
+  const rows = await getJournalRows(sheets, spreadsheetId);
+  const match = rows.find((r) => r.journal.date === date);
+  return match ? match.journal : null;
+}
+
+async function saveJournal(sheets, spreadsheetId, input) {
+  const { date, reflection, outcomes } = input;
+  if (!date) {
+    throw new Error("Journal date is required.");
+  }
+
+  const existingTaskRows = await getTaskRows(sheets, spreadsheetId);
+  const taskMap = new Map(existingTaskRows.map((r) => [r.task.id, r]));
+  const updatedTasks = [];
+
+  // Check if a journal already exists for this date (to avoid double-rolling)
+  const existingJournalRows = await getJournalRows(sheets, spreadsheetId);
+  const existingJournalRow = existingJournalRows.find((r) => r.journal.date === date);
+  const previousOutcomes = existingJournalRow
+    ? safeParseJson(existingJournalRow.journal.taskOutcomes, [])
+    : [];
+  const previouslyMissedIds = new Set(previousOutcomes.filter((o) => !o.done).map((o) => o.taskId));
+
+  for (const outcome of (outcomes || [])) {
+    if (outcome.done) {
+      continue;
+    }
+
+    // Only roll tasks that weren't already rolled in a previous save of this journal
+    if (previouslyMissedIds.has(outcome.taskId)) {
+      continue;
+    }
+
+    const taskRow = taskMap.get(outcome.taskId);
+    if (!taskRow) {
+      continue;
+    }
+
+    const task = taskRow.task;
+    const nextDue = nextDayKey(date);
+    const updatedTask = {
+      ...task,
+      dueAt: nextDue,
+      originalDueAt: task.originalDueAt || task.dueAt || date,
+      rolloverCount: String(parseInt(task.rolloverCount || "0") + 1),
+      failureReason: String(outcome.reason || "").trim(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${TASK_SHEET}!A${taskRow.rowNumber}:${columnLetter(TASK_HEADERS.length)}${taskRow.rowNumber}`,
+      valueInputOption: "RAW",
+      requestBody: { values: [recordToRow(updatedTask, TASK_HEADERS)] },
+    });
+
+    updatedTasks.push(updatedTask);
+  }
+
+  // Build stored outcomes with task titles for historical display
+  const taskOutcomesForStorage = (outcomes || []).map((outcome) => ({
+    taskId: outcome.taskId,
+    title: taskMap.get(outcome.taskId)?.task.title || outcome.title || "",
+    broadHeadId: taskMap.get(outcome.taskId)?.task.broadHeadId || "",
+    done: Boolean(outcome.done),
+    reason: String(outcome.reason || "").trim(),
+  }));
+
+  const now = new Date().toISOString();
+  const journalRecord = {
+    id: existingJournalRow?.journal.id || crypto.randomUUID(),
+    date,
+    reflection: String(reflection || "").trim(),
+    taskOutcomes: JSON.stringify(taskOutcomesForStorage),
+    createdAt: existingJournalRow?.journal.createdAt || now,
+    updatedAt: now,
+  };
+
+  const rowValues = recordToRow(journalRecord, JOURNAL_HEADERS);
+
+  if (existingJournalRow) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${JOURNAL_SHEET}!A${existingJournalRow.rowNumber}:${columnLetter(JOURNAL_HEADERS.length)}${existingJournalRow.rowNumber}`,
+      valueInputOption: "RAW",
+      requestBody: { values: [rowValues] },
+    });
+  } else {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: `${JOURNAL_SHEET}!A:${columnLetter(JOURNAL_HEADERS.length)}`,
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values: [rowValues] },
+    });
+  }
+
+  return { journal: journalRecord, updatedTasks };
+}
+
 async function seedDefaultBroadHeads(sheets, spreadsheetId) {
   const now = new Date().toISOString();
   const seeded = DEFAULT_CATEGORY_SEEDS.map((item) => ({
@@ -332,9 +495,7 @@ async function saveTask(sheets, spreadsheetId, input) {
       spreadsheetId,
       range: `${TASK_SHEET}!A${existingRow.rowNumber}:${columnLetter(TASK_HEADERS.length)}${existingRow.rowNumber}`,
       valueInputOption: "RAW",
-      requestBody: {
-        values: [rowValues],
-      },
+      requestBody: { values: [rowValues] },
     });
     await appendHistory(sheets, spreadsheetId, "task", "updated", task);
     return task;
@@ -345,9 +506,7 @@ async function saveTask(sheets, spreadsheetId, input) {
     range: `${TASK_SHEET}!A:${columnLetter(TASK_HEADERS.length)}`,
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
-    requestBody: {
-      values: [rowValues],
-    },
+    requestBody: { values: [rowValues] },
   });
   await appendHistory(sheets, spreadsheetId, "task", "created", task);
   return task;
@@ -366,9 +525,7 @@ async function saveBroadHead(sheets, spreadsheetId, input) {
       spreadsheetId,
       range: `${BROAD_HEAD_SHEET}!A${existingRow.rowNumber}:${columnLetter(BROAD_HEAD_HEADERS.length)}${existingRow.rowNumber}`,
       valueInputOption: "RAW",
-      requestBody: {
-        values: [rowValues],
-      },
+      requestBody: { values: [rowValues] },
     });
     await appendHistory(sheets, spreadsheetId, "broad_head", "updated", broadHead);
     return broadHead;
@@ -379,9 +536,7 @@ async function saveBroadHead(sheets, spreadsheetId, input) {
     range: `${BROAD_HEAD_SHEET}!A:${columnLetter(BROAD_HEAD_HEADERS.length)}`,
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
-    requestBody: {
-      values: [rowValues],
-    },
+    requestBody: { values: [rowValues] },
   });
   await appendHistory(sheets, spreadsheetId, "broad_head", "created", broadHead);
   return broadHead;
@@ -479,6 +634,7 @@ async function resetPlanner(sheets, spreadsheetId) {
     seededBroadHeads.map((item) => recordToRow(item, BROAD_HEAD_HEADERS))
   );
   await replaceSheetRows(sheets, spreadsheetId, HISTORY_SHEET, HISTORY_HEADERS, []);
+  await replaceSheetRows(sheets, spreadsheetId, JOURNAL_SHEET, JOURNAL_HEADERS, []);
 
   return {
     tasks: [],
@@ -552,6 +708,10 @@ function normalizeTask(input, current, now, broadHeadMap) {
     createdAt: input.createdAt || current?.createdAt || now,
     updatedAt: now,
     completedAt: status === "completed" ? (input.completedAt || current?.completedAt || now) : "",
+    // Preserve rollover fields — only the journal action mutates these
+    rolloverCount: current?.rolloverCount || "0",
+    originalDueAt: current?.originalDueAt || "",
+    failureReason: current?.failureReason || "",
   };
 }
 
@@ -590,4 +750,21 @@ function columnLetter(index) {
     current = Math.floor((current - 1) / 26);
   }
   return result;
+}
+
+function nextDayKey(dateKey) {
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+  const next = new Date(year, month - 1, day + 1);
+  const y = next.getFullYear();
+  const m = String(next.getMonth() + 1).padStart(2, "0");
+  const d = String(next.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function safeParseJson(value, fallback) {
+  try {
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
 }

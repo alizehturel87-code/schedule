@@ -187,6 +187,7 @@ export function formatTaskDueLabel(value) {
 export function taskToViewModel(taskRecord, categories) {
   const categoryId = String(taskRecord?.broadHeadId || "").trim();
   const category = categories.find((item) => item.id === categoryId) || defaultCategoryForId(categoryId) || categories[0] || null;
+  const rolloverCount = parseInt(taskRecord?.rolloverCount || "0") || 0;
   return {
     id: String(taskRecord?.id || "").trim(),
     title: String(taskRecord?.title || "").trim(),
@@ -198,7 +199,30 @@ export function taskToViewModel(taskRecord, categories) {
     createdAt: String(taskRecord?.createdAt || "").trim(),
     completedAt: String(taskRecord?.completedAt || "").trim(),
     categoryName: category?.name || String(taskRecord?.broadHeadTitle || "").trim(),
+    rolloverCount,
+    originalDueAt: String(taskRecord?.originalDueAt || "").trim(),
+    failureReason: String(taskRecord?.failureReason || "").trim(),
+    isRolledOver: rolloverCount > 0,
   };
+}
+
+export function parseJournalRecord(record) {
+  const outcomes = safeParse(record?.taskOutcomes, []);
+  return {
+    id: String(record?.id || "").trim(),
+    date: String(record?.date || "").trim(),
+    reflection: String(record?.reflection || "").trim(),
+    taskOutcomes: Array.isArray(outcomes) ? outcomes : [],
+    doneCount: Array.isArray(outcomes) ? outcomes.filter((o) => o.done).length : 0,
+    missedCount: Array.isArray(outcomes) ? outcomes.filter((o) => !o.done).length : 0,
+    createdAt: String(record?.createdAt || "").trim(),
+  };
+}
+
+export function nextDayKey(dateKey) {
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+  const next = new Date(year, month - 1, day + 1);
+  return toDateKey(next);
 }
 
 export function sortTasks(tasks) {

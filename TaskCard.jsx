@@ -42,6 +42,11 @@ export default function TaskCard({ task, categories, now, onToggle, onDelete, on
               {formatTaskDueLabel(task.dueAt)}
             </span>
           ) : null}
+          {task.isRolledOver ? (
+            <span className="task-chip task-chip--rollover" title={task.failureReason || "Rolled over from a previous day"}>
+              ↩ ×{task.rolloverCount}
+            </span>
+          ) : null}
         </div>
       </button>
 
