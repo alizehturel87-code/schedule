@@ -252,8 +252,14 @@ export function priorityFromDueDate(dateKey, timeKey, now = new Date()) {
 export function dueDateFromPriority(priorityId, now = new Date()) {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-  if (priorityId === "urgent" || priorityId === "today") {
+  if (priorityId === "urgent") {
     return toDateKey(today);
+  }
+
+  if (priorityId === "today") {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    return toDateKey(tomorrow);
   }
 
   if (priorityId === "week") {
