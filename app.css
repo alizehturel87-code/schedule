@@ -558,6 +558,13 @@ button {
   border-radius: 14px;
 }
 
+.sheet-form__auto-hint {
+  margin: 8px 0 0;
+  color: #2f9b74;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .sheet-form__hint {
   margin-left: 6px;
   color: var(--muted);

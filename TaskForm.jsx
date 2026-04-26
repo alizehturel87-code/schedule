@@ -1,15 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarDays, Infinity, X } from "lucide-react";
 import { PRIORITY_ORDER } from "./plannerConstants";
 import {
   combineDueAt,
   dueDateFromPriority,
+  formatTaskDueLabel,
+  parseDueAt,
   priorityById,
   priorityFromDueDate,
   resolveTaskPriority,
   splitDueAt,
 } from "./plannerModel";
+
+function formatAutoHintDate(dateKey) {
+  if (!dateKey) return null;
+  const date = parseDueAt(dateKey);
+  if (!date) return null;
+  return new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(date);
+}
 
 export default function TaskForm({ task, categories, onClose, onSubmit, onDelete }) {
   const [title, setTitle] = useState("");
@@ -17,12 +26,39 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState(categories[0]?.id || "");
   const [priority, setPriority] = useState("open");
-  const [deadlineMode, setDeadlineMode] = useState(null); // null | "date" | "open"
+  const [deadlineMode, setDeadlineMode] = useState(null);
   const [deadlineError, setDeadlineError] = useState(false);
   const [dueDate, setDueDate] = useState("");
   const [dueDateError, setDueDateError] = useState(false);
   const [dueTime, setDueTime] = useState("");
   const [isEvent, setIsEvent] = useState(false);
+
+  // Inline sync hints
+  const [priorityAutoHint, setPriorityAutoHint] = useState(""); // shown under priority when date sets it
+  const [deadlineAutoHint, setDeadlineAutoHint] = useState(""); // shown under deadline when priority sets it
+  const hintTimerRef = useRef(null);
+
+  function showDeadlineAutoHint(dateKey, mode) {
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    if (mode === "open") {
+      setDeadlineAutoHint("Switched to Keep open");
+    } else {
+      const label = formatAutoHintDate(dateKey);
+      setDeadlineAutoHint(label ? `Deadline set to ${label}` : "");
+    }
+    hintTimerRef.current = setTimeout(() => setDeadlineAutoHint(""), 3000);
+  }
+
+  function showPriorityAutoHint(priorityId) {
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    const meta = priorityById(priorityId);
+    setPriorityAutoHint(`Priority set to ${meta.shortLabel}`);
+    hintTimerRef.current = setTimeout(() => setPriorityAutoHint(""), 3000);
+  }
+
+  useEffect(() => {
+    return () => { if (hintTimerRef.current) clearTimeout(hintTimerRef.current); };
+  }, []);
 
   useEffect(() => {
     if (!task) {
@@ -34,6 +70,7 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
       setDueDate(""); setDueDateError(false);
       setDueTime("");
       setIsEvent(false);
+      setPriorityAutoHint(""); setDeadlineAutoHint("");
       return;
     }
 
@@ -46,6 +83,7 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
     setDueDate(due.dueDate); setDueDateError(false);
     setDueTime(due.dueTime);
     setIsEvent(task.categoryId === "events");
+    setPriorityAutoHint(""); setDeadlineAutoHint("");
   }, [categories, task]);
 
   // User picked a date → auto-set priority
@@ -53,19 +91,23 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
     setDueDate(value);
     setDueDateError(false);
     if (value) {
-      setPriority(priorityFromDueDate(value, dueTime));
+      const autoPriority = priorityFromDueDate(value, dueTime);
+      setPriority(autoPriority);
+      showPriorityAutoHint(autoPriority);
     }
   }
 
-  // User changed time → re-derive priority (urgent threshold depends on time)
+  // User changed time → re-derive priority
   function handleDueTimeChange(value) {
     setDueTime(value);
     if (dueDate) {
-      setPriority(priorityFromDueDate(dueDate, value));
+      const autoPriority = priorityFromDueDate(dueDate, value);
+      setPriority(autoPriority);
+      showPriorityAutoHint(autoPriority);
     }
   }
 
-  // User picked a priority → auto-set date (or switch to open)
+  // User picked a priority → auto-set deadline
   function handlePriorityChange(id) {
     setPriority(id);
     const autoDate = dueDateFromPriority(id);
@@ -74,12 +116,13 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
       setDueDateError(false);
       setDeadlineMode("date");
       setDeadlineError(false);
+      showDeadlineAutoHint(autoDate, "date");
     } else {
-      // open / leisure → clear date, switch to open mode
       setDueDate("");
       setDueTime("");
       setDeadlineMode("open");
       setDeadlineError(false);
+      showDeadlineAutoHint("", "open");
     }
   }
 
@@ -97,11 +140,9 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
   function handleSubmit(event) {
     event.preventDefault();
     let hasError = false;
-
     if (!title.trim()) { setTitleError(true); hasError = true; }
     if (deadlineMode === null) { setDeadlineError(true); hasError = true; }
     if (deadlineMode === "date" && !dueDate) { setDueDateError(true); hasError = true; }
-
     if (hasError) return;
 
     onSubmit({
@@ -161,7 +202,7 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Add a note (optional)"
-              rows={3}
+              rows={2}
             />
 
             <div className="sheet-form__group">
@@ -181,35 +222,10 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
               </div>
             </div>
 
-            {/* Priority — auto-sets deadline */}
-            <div className="sheet-form__group">
-              <label>
-                Priority
-                <span className="sheet-form__hint">sets deadline automatically</span>
-              </label>
-              <div className="priority-grid">
-                {PRIORITY_ORDER.map((priorityId) => {
-                  const meta = priorityById(priorityId);
-                  return (
-                    <button
-                      key={priorityId}
-                      type="button"
-                      className={`priority-pill ${priority === priorityId ? "is-active" : ""}`}
-                      onClick={() => handlePriorityChange(priorityId)}
-                      style={priority === priorityId ? { backgroundColor: meta.color, borderColor: meta.color } : undefined}
-                    >
-                      {meta.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Deadline — required, auto-sets priority */}
+            {/* Deadline — shown FIRST so priority change below is visible */}
             <div className="sheet-form__group">
               <label>
                 Deadline <span className="sheet-form__required">*</span>
-                <span className="sheet-form__hint">sets priority automatically</span>
               </label>
 
               <div className="deadline-choice-row">
@@ -219,7 +235,9 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
                   onClick={() => handleDeadlineMode("date")}
                 >
                   <CalendarDays size={16} />
-                  Set a date
+                  {deadlineMode === "date" && dueDate
+                    ? formatAutoHintDate(dueDate) || "Set a date"
+                    : "Set a date"}
                 </button>
                 <button
                   type="button"
@@ -238,6 +256,7 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
               <AnimatePresence>
                 {deadlineMode === "date" ? (
                   <motion.div
+                    key="date-fields"
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
@@ -246,9 +265,7 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
                   >
                     <div className="sheet-form__row" style={{ marginTop: 10 }}>
                       <label className="sheet-form__field">
-                        <span>
-                          Date{dueDateError ? <span className="sheet-form__required"> required</span> : null}
-                        </span>
+                        <span>Date{dueDateError ? <span className="sheet-form__required"> required</span> : null}</span>
                         <input
                           type="date"
                           value={dueDate}
@@ -265,7 +282,6 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
                         />
                       </label>
                     </div>
-
                     <label className="sheet-form__toggle" style={{ marginTop: 10 }}>
                       <input
                         type="checkbox"
@@ -275,6 +291,55 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
                       <span>This is an event or meeting</span>
                     </label>
                   </motion.div>
+                ) : null}
+              </AnimatePresence>
+
+              <AnimatePresence>
+                {priorityAutoHint ? (
+                  <motion.p
+                    key="priority-hint"
+                    className="sheet-form__auto-hint"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    ✓ {priorityAutoHint}
+                  </motion.p>
+                ) : null}
+              </AnimatePresence>
+            </div>
+
+            {/* Priority — auto-sets deadline, hint confirms what changed */}
+            <div className="sheet-form__group">
+              <label>Priority</label>
+              <div className="priority-grid">
+                {PRIORITY_ORDER.map((priorityId) => {
+                  const meta = priorityById(priorityId);
+                  return (
+                    <button
+                      key={priorityId}
+                      type="button"
+                      className={`priority-pill ${priority === priorityId ? "is-active" : ""}`}
+                      onClick={() => handlePriorityChange(priorityId)}
+                      style={priority === priorityId ? { backgroundColor: meta.color, borderColor: meta.color } : undefined}
+                    >
+                      {meta.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <AnimatePresence>
+                {deadlineAutoHint ? (
+                  <motion.p
+                    key="deadline-hint"
+                    className="sheet-form__auto-hint"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    ✓ {deadlineAutoHint}
+                  </motion.p>
                 ) : null}
               </AnimatePresence>
             </div>
