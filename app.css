@@ -35,6 +35,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+body.planner-body--wall-mode {
+  background:
+    radial-gradient(circle at top left, rgba(217, 122, 40, 0.18), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(74, 132, 216, 0.14), transparent 26%),
+    linear-gradient(180deg, #fff8ef 0%, #f6ecdf 100%);
+}
+
 button,
 input,
 textarea {
@@ -50,6 +57,10 @@ button {
 .planner-app {
   min-height: 100vh;
   padding-bottom: 92px;
+}
+
+.planner-app.is-wall-mode {
+  padding-bottom: 32px;
 }
 
 .planner-shell {
@@ -120,6 +131,70 @@ button {
 .planner-header__actions {
   display: flex;
   gap: 10px;
+}
+
+.desktop-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(217, 122, 40, 0.16);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(255, 246, 233, 0.96)),
+    rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow);
+}
+
+.desktop-panel__eyebrow {
+  margin: 0 0 6px;
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.desktop-panel h2 {
+  margin: 0;
+  font-size: 1.45rem;
+}
+
+.desktop-panel__text,
+.desktop-panel__hint,
+.desktop-panel__status {
+  margin: 0;
+  color: var(--secondary-foreground);
+  line-height: 1.5;
+}
+
+.desktop-panel__text {
+  margin-top: 8px;
+  font-size: 0.92rem;
+}
+
+.desktop-panel__hint {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.desktop-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.desktop-panel__actions .btn {
+  gap: 8px;
+}
+
+.desktop-panel__status {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 .header-icon-btn,
@@ -652,6 +727,7 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   min-height: 46px;
   padding: 0 18px;
   border-radius: 999px;
@@ -1506,6 +1582,10 @@ button {
     padding-right: 14px;
   }
 
+  .desktop-panel__actions {
+    align-items: stretch;
+  }
+
   .sheet-form__row,
   .sheet-form__actions {
     flex-direction: column;
@@ -1534,6 +1614,14 @@ button {
   .planner-header__inner {
     max-width: none;
     margin: 0;
+  }
+
+  .desktop-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr);
+    align-items: end;
+    gap: 20px;
+    padding: 22px 24px;
   }
 
   .planner-header__top {
@@ -1649,5 +1737,32 @@ button {
     left: auto;
     max-width: 360px;
     margin: 0;
+  }
+
+  body.planner-body--wall-mode .planner-app {
+    max-width: none;
+    padding: 28px 32px 32px;
+  }
+
+  body.planner-body--wall-mode .planner-shell {
+    grid-template-columns: 250px minmax(0, 1fr);
+    gap: 28px;
+  }
+
+  body.planner-body--wall-mode .planner-nav {
+    top: 8px;
+  }
+
+  body.planner-body--wall-mode .planner-nav__inner {
+    padding: 14px;
+    border-radius: 30px;
+  }
+
+  body.planner-body--wall-mode .view-stack {
+    gap: 22px;
+  }
+
+  body.planner-body--wall-mode .view-section {
+    border-radius: 28px;
   }
 }

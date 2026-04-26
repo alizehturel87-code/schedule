@@ -53,3 +53,9 @@ npm run dev:netlify
 ```powershell
 npm run build
 ```
+
+## Install on desktop
+
+Deploy the app over HTTPS, open it in Chrome or Edge, and choose `Install app`. The app now registers a service worker and includes a desktop-ready manifest so it can open in its own window instead of a browser tab.
+
+Inside the app, use `Open wall mode` to switch into a fullscreen desktop layout. On supported browsers, the app also requests a screen wake lock so the planner can stay visible like a wall board while it is open.

@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "Schedule Wall Planner",
+  "short_name": "Schedule",
+  "description": "A desktop-friendly planner you can install and keep open like a wall board.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#fbf7f1",
+  "theme_color": "#d97a28",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
