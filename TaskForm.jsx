@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarDays, Infinity, X } from "lucide-react";
 import { PRIORITY_ORDER } from "./plannerConstants";
-import { combineDueAt, priorityById, resolveTaskPriority, splitDueAt } from "./plannerModel";
+import {
+  combineDueAt,
+  dueDateFromPriority,
+  priorityById,
+  priorityFromDueDate,
+  resolveTaskPriority,
+  splitDueAt,
+} from "./plannerModel";
 
 export default function TaskForm({ task, categories, onClose, onSubmit, onDelete }) {
   const [title, setTitle] = useState("");
@@ -10,8 +17,7 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState(categories[0]?.id || "");
   const [priority, setPriority] = useState("open");
-  // null = not chosen yet, "date" = has a deadline, "open" = no deadline
-  const [deadlineMode, setDeadlineMode] = useState(null);
+  const [deadlineMode, setDeadlineMode] = useState(null); // null | "date" | "open"
   const [deadlineError, setDeadlineError] = useState(false);
   const [dueDate, setDueDate] = useState("");
   const [dueDateError, setDueDateError] = useState(false);
@@ -20,33 +26,62 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
 
   useEffect(() => {
     if (!task) {
-      setTitle("");
-      setTitleError(false);
+      setTitle(""); setTitleError(false);
       setDescription("");
       setCategoryId(categories[0]?.id || "");
       setPriority("open");
-      setDeadlineMode(null);
-      setDeadlineError(false);
-      setDueDate("");
-      setDueDateError(false);
+      setDeadlineMode(null); setDeadlineError(false);
+      setDueDate(""); setDueDateError(false);
       setDueTime("");
       setIsEvent(false);
       return;
     }
 
     const due = splitDueAt(task.dueAt);
-    setTitle(task.title || "");
-    setTitleError(false);
+    setTitle(task.title || ""); setTitleError(false);
     setDescription(task.description || "");
     setCategoryId(task.categoryId || categories[0]?.id || "");
     setPriority(resolveTaskPriority(task));
-    setDeadlineMode(task.dueAt ? "date" : "open");
-    setDeadlineError(false);
-    setDueDate(due.dueDate);
-    setDueDateError(false);
+    setDeadlineMode(task.dueAt ? "date" : "open"); setDeadlineError(false);
+    setDueDate(due.dueDate); setDueDateError(false);
     setDueTime(due.dueTime);
     setIsEvent(task.categoryId === "events");
   }, [categories, task]);
+
+  // User picked a date → auto-set priority
+  function handleDueDateChange(value) {
+    setDueDate(value);
+    setDueDateError(false);
+    if (value) {
+      setPriority(priorityFromDueDate(value, dueTime));
+    }
+  }
+
+  // User changed time → re-derive priority (urgent threshold depends on time)
+  function handleDueTimeChange(value) {
+    setDueTime(value);
+    if (dueDate) {
+      setPriority(priorityFromDueDate(dueDate, value));
+    }
+  }
+
+  // User picked a priority → auto-set date (or switch to open)
+  function handlePriorityChange(id) {
+    setPriority(id);
+    const autoDate = dueDateFromPriority(id);
+    if (autoDate) {
+      setDueDate(autoDate);
+      setDueDateError(false);
+      setDeadlineMode("date");
+      setDeadlineError(false);
+    } else {
+      // open / leisure → clear date, switch to open mode
+      setDueDate("");
+      setDueTime("");
+      setDeadlineMode("open");
+      setDeadlineError(false);
+    }
+  }
 
   function handleDeadlineMode(mode) {
     setDeadlineMode(mode);
@@ -55,28 +90,17 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
       setDueDate("");
       setDueTime("");
       setDueDateError(false);
+      setPriority("open");
     }
   }
 
   function handleSubmit(event) {
     event.preventDefault();
-
     let hasError = false;
 
-    if (!title.trim()) {
-      setTitleError(true);
-      hasError = true;
-    }
-
-    if (deadlineMode === null) {
-      setDeadlineError(true);
-      hasError = true;
-    }
-
-    if (deadlineMode === "date" && !dueDate) {
-      setDueDateError(true);
-      hasError = true;
-    }
+    if (!title.trim()) { setTitleError(true); hasError = true; }
+    if (deadlineMode === null) { setDeadlineError(true); hasError = true; }
+    if (deadlineMode === "date" && !dueDate) { setDueDateError(true); hasError = true; }
 
     if (hasError) return;
 
@@ -110,7 +134,7 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
           animate={{ y: 0 }}
           exit={{ y: "100%" }}
           transition={{ type: "spring", damping: 26, stiffness: 280 }}
-          onClick={(event) => event.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="sheet-panel__header">
             <h2>{task ? "Edit Task" : "New Task"}</h2>
@@ -125,7 +149,7 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
                 className={`sheet-form__input sheet-form__input--title ${titleError ? "has-error" : ""}`}
                 type="text"
                 value={title}
-                onChange={(event) => { setTitle(event.target.value); setTitleError(false); }}
+                onChange={(e) => { setTitle(e.target.value); setTitleError(false); }}
                 placeholder="What needs to be done?"
                 autoFocus
               />
@@ -135,7 +159,7 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
             <textarea
               className="sheet-form__textarea"
               value={description}
-              onChange={(event) => setDescription(event.target.value)}
+              onChange={(e) => setDescription(e.target.value)}
               placeholder="Add a note (optional)"
               rows={3}
             />
@@ -148,10 +172,7 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
                     key={category.id}
                     type="button"
                     className={`choice-pill ${categoryId === category.id ? "is-active" : ""}`}
-                    onClick={() => {
-                      setCategoryId(category.id);
-                      setIsEvent(category.id === "events");
-                    }}
+                    onClick={() => { setCategoryId(category.id); setIsEvent(category.id === "events"); }}
                   >
                     <span>{category.emoji}</span>
                     <span>{category.name}</span>
@@ -160,8 +181,12 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
               </div>
             </div>
 
+            {/* Priority — auto-sets deadline */}
             <div className="sheet-form__group">
-              <label>Priority</label>
+              <label>
+                Priority
+                <span className="sheet-form__hint">sets deadline automatically</span>
+              </label>
               <div className="priority-grid">
                 {PRIORITY_ORDER.map((priorityId) => {
                   const meta = priorityById(priorityId);
@@ -170,7 +195,7 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
                       key={priorityId}
                       type="button"
                       className={`priority-pill ${priority === priorityId ? "is-active" : ""}`}
-                      onClick={() => setPriority(priorityId)}
+                      onClick={() => handlePriorityChange(priorityId)}
                       style={priority === priorityId ? { backgroundColor: meta.color, borderColor: meta.color } : undefined}
                     >
                       {meta.label}
@@ -180,10 +205,11 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
               </div>
             </div>
 
-            {/* Deadline — required, choose one */}
+            {/* Deadline — required, auto-sets priority */}
             <div className="sheet-form__group">
               <label>
                 Deadline <span className="sheet-form__required">*</span>
+                <span className="sheet-form__hint">sets priority automatically</span>
               </label>
 
               <div className="deadline-choice-row">
@@ -220,11 +246,13 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
                   >
                     <div className="sheet-form__row" style={{ marginTop: 10 }}>
                       <label className="sheet-form__field">
-                        <span>Date {dueDateError ? <span className="sheet-form__required">required</span> : null}</span>
+                        <span>
+                          Date{dueDateError ? <span className="sheet-form__required"> required</span> : null}
+                        </span>
                         <input
                           type="date"
                           value={dueDate}
-                          onChange={(event) => { setDueDate(event.target.value); setDueDateError(false); }}
+                          onChange={(e) => handleDueDateChange(e.target.value)}
                           className={dueDateError ? "has-error" : ""}
                         />
                       </label>
@@ -233,7 +261,7 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
                         <input
                           type="time"
                           value={dueTime}
-                          onChange={(event) => setDueTime(event.target.value)}
+                          onChange={(e) => handleDueTimeChange(e.target.value)}
                         />
                       </label>
                     </div>
@@ -242,7 +270,7 @@ export default function TaskForm({ task, categories, onClose, onSubmit, onDelete
                       <input
                         type="checkbox"
                         checked={isEvent}
-                        onChange={(event) => setIsEvent(event.target.checked)}
+                        onChange={(e) => setIsEvent(e.target.checked)}
                       />
                       <span>This is an event or meeting</span>
                     </label>

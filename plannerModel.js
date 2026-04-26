@@ -219,6 +219,62 @@ export function parseJournalRecord(record) {
   };
 }
 
+// Returns the appropriate priority string given a due date/time selection
+export function priorityFromDueDate(dateKey, timeKey, now = new Date()) {
+  if (!dateKey) return "open";
+  const due = parseDueAt(timeKey ? `${dateKey}T${timeKey}` : dateKey);
+  if (!due) return "open";
+
+  if (timeKey) {
+    const diffHours = (due.getTime() - now.getTime()) / (1000 * 60 * 60);
+    if (diffHours <= 12) return "urgent";
+    if (diffHours <= 24) return "today";
+  }
+
+  const todayKey = toDateKey(now);
+  if (dateKey === todayKey) return "today";
+
+  // Compare to end of this week (Sunday)
+  const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dueDate = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+  const sunday = new Date(todayDate);
+  sunday.setDate(todayDate.getDate() + (7 - todayDate.getDay()));
+
+  if (dueDate <= sunday) {
+    const dow = dueDate.getDay();
+    return (dow === 0 || dow === 6) ? "weekend" : "week";
+  }
+
+  return "open";
+}
+
+// Returns a YYYY-MM-DD date string that matches the chosen priority, or null for open/leisure
+export function dueDateFromPriority(priorityId, now = new Date()) {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  if (priorityId === "urgent" || priorityId === "today") {
+    return toDateKey(today);
+  }
+
+  if (priorityId === "week") {
+    const dow = today.getDay();
+    const daysToFriday = dow <= 5 ? (5 - dow) || 7 : 6; // if already Sat, jump to next Fri
+    const friday = new Date(today);
+    friday.setDate(today.getDate() + daysToFriday);
+    return toDateKey(friday);
+  }
+
+  if (priorityId === "weekend") {
+    const dow = today.getDay();
+    const daysToSat = dow <= 6 ? (6 - dow) || 7 : 1;
+    const saturday = new Date(today);
+    saturday.setDate(today.getDate() + daysToSat);
+    return toDateKey(saturday);
+  }
+
+  return null; // "open" and "leisure" → no date
+}
+
 export function isTaskOverdue(task, now = new Date()) {
   if (task.completed || !task.dueAt) return false;
   const due = parseDueAt(task.dueAt);

@@ -558,6 +558,14 @@ button {
   border-radius: 14px;
 }
 
+.sheet-form__hint {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  font-style: italic;
+}
+
 .sheet-form__required {
   color: var(--danger);
   font-size: 0.78rem;
