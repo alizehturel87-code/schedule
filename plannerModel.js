@@ -219,6 +219,18 @@ export function parseJournalRecord(record) {
   };
 }
 
+export function isTaskOverdue(task, now = new Date()) {
+  if (task.completed || !task.dueAt) return false;
+  const due = parseDueAt(task.dueAt);
+  if (!due) return false;
+  // Date-only tasks: overdue only after the due date has fully passed
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(task.dueAt))) {
+    return toDateKey(due) < toDateKey(now);
+  }
+  // Datetime tasks: overdue past the exact minute
+  return due.getTime() < now.getTime();
+}
+
 export function nextDayKey(dateKey) {
   const [year, month, day] = String(dateKey).split("-").map(Number);
   const next = new Date(year, month - 1, day + 1);

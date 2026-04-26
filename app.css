@@ -211,6 +211,21 @@ button {
   opacity: 0.6;
 }
 
+.task-card.is-overdue {
+  border-color: rgba(212, 85, 85, 0.35);
+  background: #fff8f8;
+}
+
+.task-chip--overdue {
+  background: rgba(212, 85, 85, 0.12);
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.task-time.is-overdue {
+  color: var(--danger);
+}
+
 .task-card__check {
   display: inline-flex;
   align-items: center;

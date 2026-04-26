@@ -1,6 +1,6 @@
 import { Check, CheckCheck, Clock3, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
-import { getCategoryById, formatTaskDueLabel, parseDueAt, priorityById, resolveTaskPriority } from "./plannerModel";
+import { getCategoryById, formatTaskDueLabel, isTaskOverdue, parseDueAt, priorityById, resolveTaskPriority } from "./plannerModel";
 
 function formatCompletedAt(value) {
   const date = parseDueAt(value);
@@ -17,6 +17,7 @@ function formatCompletedAt(value) {
 export default function TaskCard({ task, categories, now, onToggle, onDelete, onEdit }) {
   const category = getCategoryById(categories, task.categoryId);
   const priority = priorityById(resolveTaskPriority(task, now));
+  const overdue = isTaskOverdue(task, now);
 
   return (
     <motion.article
@@ -24,7 +25,7 @@ export default function TaskCard({ task, categories, now, onToggle, onDelete, on
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      className={`task-card ${task.completed ? "is-complete" : ""}`}
+      className={`task-card ${task.completed ? "is-complete" : ""} ${overdue ? "is-overdue" : ""}`}
     >
       <button
         type="button"
@@ -49,10 +50,13 @@ export default function TaskCard({ task, categories, now, onToggle, onDelete, on
             </span>
           ) : null}
           {task.dueAt ? (
-            <span className="task-time">
+            <span className={`task-time ${overdue ? "is-overdue" : ""}`}>
               <Clock3 size={12} />
               {formatTaskDueLabel(task.dueAt)}
             </span>
+          ) : null}
+          {overdue ? (
+            <span className="task-chip task-chip--overdue">Overdue</span>
           ) : null}
           {task.isRolledOver ? (
             <span className="task-chip task-chip--rollover" title={task.failureReason || "Rolled over from a previous day"}>
